@@ -11,11 +11,12 @@ from monai.transforms import Compose, AsDiscrete, Activations
 import monai
 from monai.data import list_data_collate, decollate_batch, DataLoader
 from monai.inferers import sliding_window_inference
-from segment_tb_cxr.training.train_tb_segment import getTransforms
+from segment_tb_cxr.training.train_tb_segment import get_transforms
+
 """
-This script is used to predict the binary TB masks on the test Chest X Rays using the
-pretrained TB segmentation model.User can provide the output prediction directory
-name to save the binary lung masks in the given folder.
+This script is used to predict the binary TB masks on the test Chest X Rays
+using the pretrained TB segmentation model.User can provide the output
+prediction directory name to save the binary lung masks in the given folder.
 """
 
 
@@ -133,7 +134,7 @@ def _resample_cxr(new_size, gaussian_sigma, org_img):
     return resampled_for_seg
 
 
-def _predict_mask(file_path, model, device, model_info, threshold=0.5):
+def _predict_mask(file_path, model, device, model_info):
     """
     Predict the lung mask from the resampled image array. This function uses
     trained segmentation models(torch) to segment lungs for a given image with
@@ -156,8 +157,13 @@ def _predict_mask(file_path, model, device, model_info, threshold=0.5):
     """
     original_img = _read_image(file_path)
 
-    post_trans = Compose([Activations(sigmoid=True), AsDiscrete(threshold=threshold)])
-    train_transforms,val_transforms,test_transforms = getTransforms(model_info)
+    post_trans = Compose(
+        [
+            Activations(sigmoid=True),
+            AsDiscrete(threshold=model_info["fixed_variables"]["threshold"]),
+        ]
+    )
+    train_transforms, val_transforms, test_transforms = get_transforms(model_info)
 
     test_files = [{"img": file_path}]
     test_ds = monai.data.Dataset(data=test_files, transform=test_transforms)
@@ -180,7 +186,9 @@ def _predict_mask(file_path, model, device, model_info, threshold=0.5):
         pred_mask_0 = np.transpose(pred[0].cpu().numpy(), [1, 0]).astype(np.int32)
         pred_mask_1 = np.transpose(pred[1].cpu().numpy(), [1, 0]).astype(np.int32)
         pred_mask_2 = np.transpose(pred[2].cpu().numpy(), [1, 0]).astype(np.int32)
-        pred_mask = ((pred_mask_0 > 0) | (pred_mask_1 > 0) | (pred_mask_2 > 0)).astype(np.int32)
+        pred_mask = ((pred_mask_0 > 0) | (pred_mask_1 > 0) | (pred_mask_2 > 0)).astype(
+            np.int32
+        )
     pred_mask = sitk.GetImageFromArray(pred_mask)
     new_spacing = [
         sz * spc / nsz
@@ -212,8 +220,10 @@ def main(argv=None):
         "input_csv_path",
         type=pathlib.Path,
         help="Input CSV path containing \
-                                column names as 'Filename' and 'Output_tb_seg_filename' which represent \
-                                paths of  CXRs and their corresponding binary TB masks respectively",
+                                column names as 'processed_Filename' and \
+                                'Output_tb_seg_filename' which represent \
+                                paths of  CXRs and their corresponding binary \
+                                TB masks respectively",
     )
 
     parser.add_argument(
@@ -231,27 +241,20 @@ def main(argv=None):
     parser.add_argument(
         "model_info_json_path",
         type=pathlib.Path,
-        help="Path to JSON file containing each segmentation model's keys and their respective \
-                hyperparameters as values",
+        help="Path to JSON file containing each segmentation model's keys and \
+              their respective hyperparameters as values",
     )
     parser.add_argument(
         "output_csv_filename",
         type=str,
-        help="Output CSV filename to save the column 'pred_tb_seg_file' along with the initial columns in the input_csv_file"
-    )
-        
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=0.5,
-        help="Threshold to convert the predicted scores to binary lung mask. \
-                                            If prob. > threshold --> TB pixel,else --> background",
+        help="Output CSV filename to save the column 'pred_tb_seg_file' along \
+              with the initial columns in the input_csv_file",
     )
     args = parser.parse_args()
 
     with open(str(args.model_info_json_path)) as f:
         model_info = json.load(f)
-        
+
     model, device = _load_model(args.tb_segmentation_model_path)
 
     df = pd.read_csv(args.input_csv_path)
@@ -263,13 +266,20 @@ def main(argv=None):
         sitk.WriteImage(
             mask,
             str(
-                pathlib.Path(args.output_pred_dir) / (pathlib.Path(file).stem + "_pred_seg.nrrd")
+                pathlib.Path(args.output_pred_dir)
+                / (pathlib.Path(file).stem + "_pred_seg.nrrd")
             ),
             useCompression=True,
         )
-        
-    df['pred_tb_seg_file'] = df["processed_Filename"].apply(lambda x: str(pathlib.Path(args.output_pred_dir) / (pathlib.Path(x).stem + "_pred_seg.nrrd")))
-    df.to_csv(args.output_csv_filename,index=False)
+
+    df["pred_tb_seg_file"] = df["processed_Filename"].apply(
+        lambda x: str(
+            pathlib.Path(args.output_pred_dir)
+            / (pathlib.Path(x).stem + "_pred_seg.nrrd")
+        )
+    )
+    df.to_csv(args.output_csv_filename, index=False)
+
 
 if __name__ == "__main__":
     main()

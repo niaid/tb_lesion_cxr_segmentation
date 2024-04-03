@@ -1,0 +1,7 @@
+{
+    "img_size": 640,
+    "name": "yolov8_experiment",
+    "fliplr": 0.0,
+    "epochs": 200
+    
+  }

@@ -1,0 +1,2 @@
+segment_tb_cxr/yolov8/weights/*.pt filter=lfs diff=lfs merge=lfs -text
+segment_tb_cxr/resnet_unet/weights/*.pt filter=lfs diff=lfs merge=lfs -text

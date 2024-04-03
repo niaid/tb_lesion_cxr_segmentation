@@ -1,0 +1,7 @@
+simpleitk==2.0.0
+pandas==0.25.3
+scikit-learn
+pydicom
+monai[all]
+numpy==1.23.1
+ultralytics

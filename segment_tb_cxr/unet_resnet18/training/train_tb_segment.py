@@ -24,7 +24,7 @@ from datetime import timedelta
 import argparse
 import pathlib
 import json
-from segment_tb_cxr.resnet_unet.training.resnet18 import ResNetUNet
+from segment_tb_cxr.unet_resnet18.training.resnet18 import ResNetUNet
 from torch.utils.tensorboard import SummaryWriter
 
 """
@@ -428,6 +428,7 @@ def main(argv=None):
     parser.add_argument(
         "--plot_images_for_debugging",
         type=bool,
+        default=False,
         help="plot_images_for_debugging during the training",
     )
 

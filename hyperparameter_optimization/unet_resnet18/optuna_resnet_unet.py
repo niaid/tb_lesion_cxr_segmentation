@@ -1,7 +1,7 @@
 import optuna
 import monai
-from segment_tb_cxr.training.train_tb_segment import (
-    trainModel,
+from segment_tb_cxr.unet_resnet18.training.train_tb_segment import (
+    train_model,
     _configure_data_preprocess,
     calculate_validation_loss,
 )
@@ -9,7 +9,7 @@ from monai.transforms import Activations, AsDiscrete, Compose, EnsureType
 import argparse
 import pathlib
 import json
-from segment_tb_cxr.inference.inference_tb_segment import _load_model
+from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import _load_model
 from functools import partial
 import pickle
 
@@ -41,7 +41,7 @@ def objective(
         train_csv_path, val_csv_path, trial_model_info
     )
 
-    trainModel(train_loader, val_loader, model_info, output_model_filename)
+    train_model(train_loader, val_loader, model_info, output_model_filename)
 
     model, device = _load_model(output_model_filename.split(".pt")[0] + "_loss.pt")
 

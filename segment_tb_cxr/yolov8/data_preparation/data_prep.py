@@ -6,7 +6,6 @@ import argparse
 import multiprocessing
 from functools import partial
 import yaml
-from segment_tb_cxr.unet_resnet18.data_preparation.data_prep import split_train_val_test
 
 
 def write_images(output_folder, input_img_filename):
@@ -60,12 +59,43 @@ def write_labels(output_folder, reference_filename):
             txt_file.write(txt_line + "\n")
 
 
+def write_images_and_labels(df, output_dir, dataset="train"):
+    img_directory = os.path.join(output_dir, "images", dataset)
+    label_directory = os.path.join(output_dir, "labels", dataset)
+    if not os.path.exists(img_directory):
+        os.makedirs(img_directory)
+    if not os.path.exists(label_directory):
+        os.makedirs(label_directory)
+
+    with multiprocessing.Pool(20) as p:
+        func = partial(write_images, img_directory)
+        p.map(func, df["processed_Filename"])
+
+    with multiprocessing.Pool(20) as p:
+        func = partial(write_labels, label_directory)
+        p.map(func, df["processed_Filename"])
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "input_csv_path",
+        "input_train_csv_path",
         type=str,
-        help="Input csv path \
+        help="Input training csv path \
+                        containing columns processed_Filename and \
+                            Output_seg_filename as columns",
+    )
+    parser.add_argument(
+        "input_val_csv_path",
+        type=str,
+        help="Input validation csv path \
+                        containing columns processed_Filename and \
+                            Output_seg_filename as columns",
+    )
+    parser.add_argument(
+        "input_test_csv_path",
+        type=str,
+        help="Input testing csv path \
                         containing columns processed_Filename and \
                             Output_seg_filename as columns",
     )
@@ -83,29 +113,16 @@ def main():
         help="Output YAML \
                                                                 filename",
     )
+
     args = parser.parse_args()
 
-    df = pd.read_csv(args.input_csv_path)
+    train_df = pd.read_csv(args.input_train_csv_path)
+    val_df = pd.read_csv(args.input_val_csv_path)
+    test_df = pd.read_csv(args.input_test_csv_path)
 
-    train_df, val_df, test_df = split_train_val_test(
-        df, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15
-    )
-
-    for dataset in ["train", "val", "test"]:
-        img_directory = os.path.join(args.output_dir, "images", dataset)
-        label_directory = os.path.join(args.output_dir, "labels", dataset)
-        if not os.path.exists(img_directory):
-            os.makedirs(img_directory)
-        if not os.path.exists(label_directory):
-            os.makedirs(label_directory)
-
-        with multiprocessing.Pool(20) as p:
-            func = partial(write_images, img_directory)
-            p.map(func, df["processed_Filename"])
-
-        with multiprocessing.Pool(20) as p:
-            func = partial(write_labels, label_directory)
-            p.map(func, df["processed_Filename"])
+    write_images_and_labels(train_df, args.output_dir, dataset="train")
+    write_images_and_labels(val_df, args.output_dir, dataset="val")
+    write_images_and_labels(test_df, args.output_dir, dataset="test")
 
     data = {
         "path": args.output_dir,

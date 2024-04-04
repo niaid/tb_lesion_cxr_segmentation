@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import SimpleITK as sitk
 from ultralytics import YOLO
-from segment_tb_cxr.unet_resnet18.inference import _read_image
+from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import _read_image
 
 
 def pred_segmentations(input_csv_path, weights, output_dir, output_csv_filename):

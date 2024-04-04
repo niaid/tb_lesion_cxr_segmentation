@@ -3,7 +3,7 @@ import SimpleITK as sitk
 import pathlib
 import argparse
 import multiprocessing
-from functools import partial
+
 
 """
 This script computes various Overlap results from the
@@ -72,8 +72,10 @@ def main(argv=None):
     df = pd.read_csv(args.input_csv_path)
 
     with multiprocessing.Pool(30) as p:
-        function = partial(_compute_metrics, df)
-        results = p.map(function, range(len(df)))
+        results = p.starmap(
+            _compute_metrics,
+            zip(df["Output_tb_seg_filename"].tolist(), df["pred_tb_seg_file"].tolist()),
+        )
 
     df = pd.DataFrame(results)
 

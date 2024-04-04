@@ -86,7 +86,7 @@ def save_nrrd_label_image(image_file_name, output_seg_filename, rois):
     sitk.WriteImage(label_image, output_seg_filename + ".seg.nrrd")
 
 
-def split_train_val_test(df, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15):
+def split_train_val_test(df, train_ratio=0.7, val_ratio=0.15):
     # Calculate the lengths of each split
     num_rows = len(df)
     train_size = int(train_ratio * num_rows)
@@ -174,6 +174,24 @@ def main():
                                                                         prefix for \
                                                                         csv filenames",
     )
+    parser.add_argument(
+        "abnormality_list",
+        type=list,
+        help="Abnormality list to filter and save the labels",
+    )
+    parser.add_argument(
+        "--train_ratio",
+        type=float,
+        default=0.7,
+        help="Ratio of training set to entire dataset",
+    )
+    parser.add_argument(
+        "--val_ratio",
+        type=float,
+        default=0.15,
+        help="Ratio of validation set to entire dataset",
+    )
+
     args = parser.parse_args()
 
     zhying_df = pd.read_csv(args.input_csv_path)
@@ -207,7 +225,8 @@ def main():
         merged_zhying_outlier_info_df["cxr_outlier"] != "outlier"
     ]
 
-    filtered_df = filter_df(df, wanted_findings=["Secondary Pulmonary Tuberculosis"])
+    # Filter labels with only "Secondary Pulmonary Tuberculosis"
+    filtered_df = filter_df(df, wanted_findings=args.abnormality_list)
 
     # Save label files with only "Secondary Pulmonary Tuberculosis" regions.
     with multiprocessing.Pool(15) as p:
@@ -221,7 +240,7 @@ def main():
         )
 
     train_df, val_df, test_df = split_train_val_test(
-        filtered_df, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15
+        filtered_df, train_ratio=args.train_ratio, val_ratio=args.val_ratio
     )
 
     train_df.to_csv(args.output_prefix_for_csv_filename + "_train.csv", index=False)

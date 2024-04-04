@@ -2,7 +2,7 @@
     "img_size": [224, 224],
     "range_variables":{
         "batch_size": [8,64], 
-        "num_workers": 4, 
+        "num_workers": [2-8], 
         "learning_rate": [1e-5, 1e-2], 
         "momentum": [0.1,0.99],
         "epochs": [50,150],

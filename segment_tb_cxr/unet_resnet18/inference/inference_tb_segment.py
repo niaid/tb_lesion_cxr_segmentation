@@ -11,7 +11,7 @@ from monai.transforms import Compose, AsDiscrete, Activations
 import monai
 from monai.data import list_data_collate, decollate_batch, DataLoader
 from monai.inferers import sliding_window_inference
-from segment_tb_cxr.training.train_tb_segment import get_transforms
+from segment_tb_cxr.unet_resnet18.training.train_tb_segment import get_transforms
 
 """
 This script is used to predict the binary TB masks on the test Chest X Rays

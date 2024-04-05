@@ -24,7 +24,7 @@ from datetime import timedelta
 import argparse
 import pathlib
 import json
-from segment_tb_cxr.unet_resnet18.training.resnet18 import ResNetUNet
+from segment_tb_cxr.unet_resnet18.training.unet_resnet18 import ResNetUNet
 from torch.utils.tensorboard import SummaryWriter
 
 """

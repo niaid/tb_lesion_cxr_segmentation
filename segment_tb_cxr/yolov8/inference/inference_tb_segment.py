@@ -7,22 +7,39 @@ from ultralytics import YOLO
 from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import _read_image
 
 
-def pred_segmentations(input_csv_path, weights, output_dir, output_csv_filename):
+def generate_segmentations(df, weights, output_dir):
+    """
+
+    This function reads the input image filename, extracts the numpy array and
+    is then passed into the loaded model to generate the predicted segmentations.
+    The predicted segmentation in numpy array format is generated in the
+    usually 640*480 shape and os is then resampled to the original size. This
+    resampled original size image is then saved into the output directory.
+
+    Args:
+
+        df(pd.DataFrame): dataframe containing columns processed_Filename
+        weights(str): Input path to the weights
+        output_dir(str): output directory to save the predicted segmentations
+        output_csv_filename
+
+    Returns:
+          ---
+
+    """
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     model = YOLO(weights)
 
-    df = pd.read_csv(input_csv_path)
     for idx, img_path in enumerate(df["processed_Filename"].tolist()):
         original_img = _read_image(img_path)
 
-        img_path = "sample.png"
-        sitk.WriteImage(
-            sitk.Cast(sitk.RescaleIntensity(original_img), sitk.sitkUInt8), img_path
-        )
+        rescaled_img = sitk.Cast(sitk.RescaleIntensity(original_img))
 
-        results = model(img_path)
+        img_arr = sitk.GetArrayFromImage(rescaled_img)
+        results = model.predict(source=img_arr, save=False, save_txt=False)
 
         output_pred_file = os.path.join(
             output_dir,
@@ -71,11 +88,6 @@ def pred_segmentations(input_csv_path, weights, output_dir, output_csv_filename)
                 ),
             )
 
-    df["pred_tb_seg_file"] = df["processed_Filename"].apply(
-        lambda x: os.path.splitext(os.path.basename(img_path))[0] + "_pred_seg.png"
-    )
-    df.to_csv(output_csv_filename, index=False)
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -94,9 +106,14 @@ def main():
 
     args = parser.parse_args()
 
-    pred_segmentations(
-        args.input_csv_path, args.weights, args.output_dir, args.output_csv_path
+    df = pd.read_csv(args.input_csv_path)
+
+    generate_segmentations(df, args.weights, args.output_dir)
+
+    df["pred_tb_seg_file"] = df["processed_Filename"].apply(
+        lambda x: os.path.splitext(os.path.basename(x))[0] + "_pred_seg.png"
     )
+    df.to_csv(args.output_csv_filename, index=False)
 
 
 if __name__ == "__main__":

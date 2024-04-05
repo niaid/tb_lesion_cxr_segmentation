@@ -8,6 +8,22 @@ from skimage.draw import polygon
 
 
 def find_full_path(data_root, row):
+    """
+    Zhying's annotation file contains patient id and filename (with jpeg extension) columns.
+    Using these columns we find the full path between the provided data_root and the
+    filename. Not all files in the tb portals dataset have .dcm extension.
+
+    Args:
+    ------
+    data_root (str): Root directory of the TB Portals Chest X Rays.
+    row(pandas.core.series.Series): Dataframe row containing columns 'Filename' and
+                                    'PatientID'
+
+    Returns:
+    ------
+    full path of the chest x ray filename within the aspera dataset.
+    """
+
     if (
         len(
             list(
@@ -86,21 +102,25 @@ def save_nrrd_label_image(image_file_name, output_seg_filename, rois):
     sitk.WriteImage(label_image, output_seg_filename + ".seg.nrrd")
 
 
-def split_train_val_test(df, train_ratio=0.7, val_ratio=0.15):
-    # Calculate the lengths of each split
-    num_rows = len(df)
-    train_size = int(train_ratio * num_rows)
-    val_size = int(val_ratio * num_rows)
-
-    # Split the DataFrame
-    train_df = df[:train_size]
-    val_df = df[train_size : train_size + val_size]  # noqa:E203
-    test_df = df[train_size + val_size :]  # noqa:E203
-
-    return train_df, val_df, test_df
-
-
 def filter_df(df, wanted_findings):
+    """
+    Filter the dataframe with only the ones which have the user provided findings
+    for each of the Chest X Ray. First filter the indices for the user wanted
+    findings within the listed findings in the zhying's annotated list and use
+    those indices to then filter the roi list and prediction scores.
+
+    Args:
+    ------
+    df (pd.DataFrame): Dataframe with the columns 'processed_Filename','Predicted Disease for Each ROI',
+                        'Locations of Boundary for Each ROI' and 'PredictedScores'
+    wanted_findings(list): list of findings that user wants to filter and have only those
+                            as regions in the saved labels drawn from the RoIs.
+
+    Returns:
+    ------
+    df (pd.DataFrame): Dataframe filtered with user wanted findings
+    """
+
     for i, (findings_list, boxes, scores_list) in enumerate(
         zip(
             df["Predicted Disease for Each ROI"],
@@ -164,32 +184,19 @@ def main():
     parser.add_argument(
         "output_dir",
         type=str,
-        help="Output directory to save\
-                                                      the predicted images",
+        help="Output directory to save the reference labels plotted using the coordinates from zhying's annotations.",
     )
     parser.add_argument(
-        "output_prefix_for_csv_filename",
+        "output_csv_filename",
         type=str,
-        help="Output \
-                                                                        prefix for \
-                                                                        csv filenames",
+        help="Output prefix for csv filenames",
     )
     parser.add_argument(
         "abnormality_list",
         type=list,
-        help="Abnormality list to filter and save the labels",
-    )
-    parser.add_argument(
-        "--train_ratio",
-        type=float,
-        default=0.7,
-        help="Ratio of training set to entire dataset",
-    )
-    parser.add_argument(
-        "--val_ratio",
-        type=float,
-        default=0.15,
-        help="Ratio of validation set to entire dataset",
+        help="Abnormality list to filter the abnormalities from the zhying's annotations and \
+              save the images pertaining only to these abnormalities. All the abnormalities\
+              will be saved with label 1 in the output directory",
     )
 
     args = parser.parse_args()
@@ -198,7 +205,7 @@ def main():
 
     # Find full paths from zhying annotations file
     zhying_df["processed_Filename"] = zhying_df.apply(
-        lambda x: find_full_path(args.input_cxr_dir, x["PatientID"])
+        lambda x: find_full_path(args.input_cxr_dir, x), axis=1
     )
     zhying_df["Output_seg_filename"] = zhying_df.apply(
         lambda x: str(
@@ -225,10 +232,10 @@ def main():
         merged_zhying_outlier_info_df["cxr_outlier"] != "outlier"
     ]
 
-    # Filter labels with only "Secondary Pulmonary Tuberculosis"
+    # Filter labels with the user provided abnormality_list.
     filtered_df = filter_df(df, wanted_findings=args.abnormality_list)
 
-    # Save label files with only "Secondary Pulmonary Tuberculosis" regions.
+    # Save label files with only filtered findings' regions.
     with multiprocessing.Pool(15) as p:
         p.starmap(
             save_nrrd_label_image,
@@ -239,13 +246,7 @@ def main():
             ),
         )
 
-    train_df, val_df, test_df = split_train_val_test(
-        filtered_df, train_ratio=args.train_ratio, val_ratio=args.val_ratio
-    )
-
-    train_df.to_csv(args.output_prefix_for_csv_filename + "_train.csv", index=False)
-    val_df.to_csv(args.output_prefix_for_csv_filename + "_val.csv", index=False)
-    test_df.to_csv(args.output_prefix_for_csv_filename + "_test.csv", index=False)
+    filtered_df.to_csv(args.output_csv_filename, index=False)
 
 
 if __name__ == "__main__":

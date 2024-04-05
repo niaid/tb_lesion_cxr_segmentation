@@ -15,8 +15,11 @@ from segment_tb_cxr.unet_resnet18.training.train_tb_segment import get_transform
 
 """
 This script is used to predict the binary TB masks on the test Chest X Rays
-using the pretrained TB segmentation model.User can provide the output
-prediction directory name to save the binary lung masks in the given folder.
+using the pretrained TB segmentation model. User needs to provide the hyperparameters file
+that is shared across training and inference. This JSON file is located in the
+training folder (segment_tb_cxr/unet_resnet18/training/unet_resnet18_params.json)
+User needs to provide the output prediction directory name to save the binary
+TB masks in the given folder.
 """
 
 
@@ -108,10 +111,9 @@ def _resample_cxr(new_size, gaussian_sigma, org_img):
         gaussian_sigma(scalar or tuple with image dimension length): If given,
                blur the image with a Gaussian with the given standard
                deviation(s) before resampling.
-        file (str): File path to image we want to resample.
+        org_img (SimpleITK.Image): original SimpleITK Image object.
     Returns:
-        Tuple (SimpleITK.Image, SimpleITK.Image): Original image and it's
-                                                normalized resampled image.
+        resampled_for_seg (SimpleITK.Image): Resampled image.
     """
 
     new_spacing = [
@@ -140,20 +142,13 @@ def _predict_mask(file_path, model, device, model_info):
     trained segmentation models(torch) to segment lungs for a given image with
     size equal to model input size.
     Args:
-        resampled_image_arr (numpy array): Numpy array obtained from resampled
-                                           images to provide input for
-                                           segmentation network in the
-                                           shape of (num_images,
-                                                     segmentation_input_size_x,
-                                                     segmentation_input_size_y)
+        file_path(str): file path to the input Chest x Ray.
         model (torch.nn.Module): Lung Segmentation model.
-        device(torch.device): Device to test the model on.
-        model_input_size(int): Model input
-        batch_size: Batch size for the model. Performing inference in batch
-                    mode is faster than image by image.
+        model_info(dict): Dictionary containing the information regarding the model parameters.
     Returns:
-        pred_masks(numpy array): Prediction masks of segmented lungs with same
-                                  size as input array.
+        pred_mask_original_size(SimpleITK.Image): SimpleITK image object of the predicted
+                                                 TB mask with the same size as the
+                                                 original image size.
     """
     original_img = _read_image(file_path)
 
@@ -179,8 +174,8 @@ def _predict_mask(file_path, model, device, model_info):
     with torch.no_grad():
         test_data = next(iter(test_loader))
         test_image = test_data["img"].to(device)
-        roi_size = model_info["roi_size"]
-        sw_batch_size = model_info["sw_batch_size"]
+        roi_size = model_info["fixed_variables"]["roi_size"]
+        sw_batch_size = model_info["fixed_variables"]["sw_batch_size"]
         pred_mask = sliding_window_inference(test_image, roi_size, sw_batch_size, model)
         pred = post_trans(decollate_batch(pred_mask)[0])
         pred_mask_0 = np.transpose(pred[0].cpu().numpy(), [1, 0]).astype(np.int32)
@@ -219,11 +214,9 @@ def main(argv=None):
     parser.add_argument(
         "input_csv_path",
         type=pathlib.Path,
-        help="Input CSV path containing \
-                                column names as 'processed_Filename' and \
-                                'Output_tb_seg_filename' which represent \
-                                paths of  CXRs and their corresponding binary \
-                                TB masks respectively",
+        help="Input CSV path containing column names as 'processed_Filename' and \
+            'Output_tb_seg_filename' which represent paths of  CXRs and their\
+            corresponding binary TB masks respectively",
     )
 
     parser.add_argument(
@@ -234,8 +227,8 @@ def main(argv=None):
     parser.add_argument(
         "output_pred_dir",
         type=str,
-        help="Output Directory to \
-                        save the prediction images in their original images",
+        help="Output Directory to ave the prediction images in their original \
+              images",
     )
 
     parser.add_argument(

@@ -5,23 +5,28 @@ The segmentation models are developed using UNet (with Resnet18 as encoder archi
 
 ## Install the requirements:
 
-User can install a conda environment and run the below command line to install all the required frameworks.
+User needs to install a conda environment and run the below command line to install all the required frameworks. User also needs to install a [git-lfs](https://git-lfs.com/) in their machine  to downlaod the weight files from this repository.
 ```
 pip install -r requirements.txt
 ```
 
-## UNet-ResNet18:
-
-### Prepare data for segmentation 
+## Prepare data for segmentation 
 
 
 To generate training and validation CSV files, run the below command. The command line prepares train/val CSV files for
 training the model to predict the TB lesions. The command line requires input csv files ('TB_Portals_labeled20231121.csv' -> Zhying's annotations file and 'TB_Portals_CXRs_August_2023.csv' -> TB portals csv file contaning the column 'cxr_outlier'' ) as some of the inputs. The command also requires input root CXR directory contaning tb portals images ,output directory to save the predicted segmented images.  Lastly, it requires output_prefix_for_csv_filename to save the train,val and test filenames. User also needs to provide the abnormality list. Here the abnormality list used is ["Secondary Pulmonary Tuberculosis"] as input to prepare the labels for this abnormality.
 
 ```
-python -m segment_tb_cxr.unet_resnet18.data_preparation.data_prep TB_Portals_labeled20231121.csv TB_Portals_CXRs_August_2023.csv /data/bcbb/cxr_data/aspera/2023/August/GlobalBucket "tbseg" ["Secondary Pulmonary Tuberculosis"]
+python -m segment_tb_cxr.data_preparation.data_prep TB_Portals_labeled20231121.csv TB_Portals_CXRs_August_2023.csv /data/bcbb/cxr_data/aspera/2023/August/GlobalBucket "tbseg" ["Secondary Pulmonary Tuberculosis"]
+```
+the above command line should generate a csv file called "tbseg.csv"
+
+After running the above command line , user should then run the below command line to generate the train/val/test csv files which are then used to train the model.
+```
+python -m segment_tb_cxr.data_preparation.prepare_train_val_test_csvs tbseg.csv 
 ```
 
+## UNet-ResNet18:
 ### Training
 
 After running the above command user will approximately see the number of files for train / val / test datasets :

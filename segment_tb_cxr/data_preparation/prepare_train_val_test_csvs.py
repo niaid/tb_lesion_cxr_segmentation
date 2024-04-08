@@ -30,23 +30,16 @@ def split_train_val_test(df, train_percentage=0.7, val_percentage=0.15):
     val_df = df[train_size : train_size + val_size]  # noqa:E203
     test_df = df[train_size + val_size :]  # noqa:E203
 
-    # Ensure that each set has unique patient IDs
-    train_ids = set(train_df["PatientID"].unique())
-    val_ids = set(val_df["PatientID"].unique())
-    test_ids = set(test_df["PatientID"].unique())
+    # Ensure that each set contains non-overlapping patient IDs
+    train_patient_ids = set(train_df["PatientID"])
+    valid_patient_ids = set(val_df["PatientID"])
 
-    # Find intersection between sets
-    val_test_overlap = val_ids.intersection(test_ids)
-    train_val_overlap = train_ids.intersection(val_ids)
-    train_test_overlap = train_ids.intersection(test_ids)
+    # Remove patient IDs from validation set that appear in the training set.
+    val_df = val_df[~val_df["PatientID"].isin(train_patient_ids)]
 
-    # Remove overlapping patient IDs
-    val_df = val_df[~val_df["PatientID"].isin(val_test_overlap)]
+    # Remove patient IDs from test set that appear in the training set and validation set.
     test_df = test_df[
-        ~test_df["PatientID"].isin(val_test_overlap.union(train_test_overlap))
-    ]
-    train_df = train_df[
-        ~train_df["PatientID"].isin(train_val_overlap.union(train_test_overlap))
+        ~test_df["PatientID"].isin(train_patient_ids.union(valid_patient_ids))
     ]
 
     return train_df, val_df, test_df
@@ -61,6 +54,11 @@ def main():
               column names processed_Filename, PatientID and Output_tb_seg_filename. \
               This csv file should be the file that is generated from data_prep.py file \
               from data_prepartion folder",
+    )
+    parser.add_argument(
+        "output_prefix_for_csv_filename",
+        type=str,
+        help="Output prefix to save train , val and test sets.",
     )
     parser.add_argument(
         "--train_ratio",

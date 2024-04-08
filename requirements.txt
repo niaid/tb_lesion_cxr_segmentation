@@ -5,3 +5,4 @@ pydicom
 monai[all]
 numpy==1.23.1
 ultralytics
+nnunet

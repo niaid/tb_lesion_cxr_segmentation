@@ -20,7 +20,7 @@
                         "neg":1,
                         "rotation_degree":45,
                         "prob_rotation":0.5
-                        }
+                        },
      "categorical_variables":
                              {
                               "optimizer": "Adam",

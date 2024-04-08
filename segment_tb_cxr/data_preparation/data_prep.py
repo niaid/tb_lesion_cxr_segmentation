@@ -99,7 +99,7 @@ def save_nrrd_label_image(image_file_name, output_seg_filename, rois):
     image_size = image_file_reader.GetSize()[0:2]
     label_image = polygons_to_label_image(rois, image_size)
 
-    sitk.WriteImage(label_image, output_seg_filename + ".seg.nrrd")
+    sitk.WriteImage(label_image, output_seg_filename + ".nrrd")
 
 
 def filter_df(df, wanted_findings):

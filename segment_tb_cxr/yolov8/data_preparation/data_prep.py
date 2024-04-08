@@ -6,6 +6,7 @@ import argparse
 import multiprocessing
 from functools import partial
 import yaml
+from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import _read_image
 
 
 def write_images(output_folder, input_img_filename):
@@ -27,15 +28,10 @@ def write_images(output_folder, input_img_filename):
 
     """
 
-    img = sitk.ReadImage(input_img_filename)
+    img = _read_image(input_img_filename)
 
     output_img_filename = os.path.join(
-        output_folder,
-        (
-            os.path.splitext(input_img_filename)[0]
-            + os.path.splitext(input_img_filename)[1]
-        ).split(".nrrd")[0]
-        + ".png",
+        output_folder, (os.path.basename(input_img_filename) + ".png",)
     )
 
     sitk.WriteImage(
@@ -75,7 +71,7 @@ def write_labels(output_folder, reference_filename):
     txt_filename = (
         os.path.splitext(reference_filename)[0]
         + os.path.splitext(reference_filename)[1]
-    ).split(".seg.nrrd")[0] + ".txt"
+    ).split(".nrrd")[0] + ".txt"
 
     txt_path = os.path.join(output_folder, txt_filename)
     # Extract contours for each region

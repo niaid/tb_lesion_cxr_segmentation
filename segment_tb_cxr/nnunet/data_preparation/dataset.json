@@ -1,0 +1,12 @@
+{
+    "channel_names": {
+        "0": "zscore"
+    },
+    "labels": {
+        "background": 0,
+        "TB": 1
+    },
+    "numTraining": 5378,
+    "file_ending": ".nrrd",
+    "name": "tbsegmentcxr"
+}

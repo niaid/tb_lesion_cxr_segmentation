@@ -1,7 +1,6 @@
 import os
 import argparse
 import pandas as pd
-import numpy as np
 import SimpleITK as sitk
 from ultralytics import YOLO
 from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import _read_image
@@ -36,9 +35,13 @@ def generate_segmentations(df, weights, output_dir):
     for idx, img_path in enumerate(df["processed_Filename"].tolist()):
         original_img = _read_image(img_path)
 
-        rescaled_img = sitk.Cast(sitk.RescaleIntensity(original_img))
+        # Yolov8 expects inputs to be in uint8 format scaled to [0-255].
+        # Different intensity ranges result in different results.
+        rescaled_img = sitk.Cast(
+            sitk.RescaleIntensity(original_img, 0, 255), sitk.sitkUInt8
+        )
 
-        img_arr = sitk.GetArrayFromImage(rescaled_img)
+        img_arr = sitk.GetArrayViewFromImage(rescaled_img)
         results = model.predict(source=img_arr, save=False, save_txt=False)
 
         output_pred_file = os.path.join(
@@ -47,12 +50,10 @@ def generate_segmentations(df, weights, output_dir):
         )
         if results[0].masks is not None:
             im_array = results[0].masks.data.cpu().numpy()
-            if im_array.shape[0] >= 2:
-                combined_mask = im_array.sum(axis=0)
-            else:
-                combined_mask = im_array[0, :, :]
+            combined_mask = im_array.sum(axis=0)
 
-            result_image = sitk.GetImageFromArray(combined_mask)
+            result_image = sitk.GetImageFromArray(combined_mask) > 0
+
             new_spacing = [
                 sz * spc / nsz
                 for nsz, sz, spc in zip(
@@ -76,12 +77,8 @@ def generate_segmentations(df, weights, output_dir):
             sitk.WriteImage(pred_mask_original_size, output_pred_file)
 
         else:
-            zero_array = np.zeros(
-                (original_img.GetSize()[0], original_img.GetSize()[1])
-            )
-            result_image = sitk.GetImageFromArray(zero_array)
             sitk.WriteImage(
-                result_image,
+                sitk.Image(original_img.GetSize(), sitk.sitkUInt8),
                 os.path.join(
                     output_dir,
                     os.path.splitext(os.path.basename(img_path))[0] + "_pred_seg.png",

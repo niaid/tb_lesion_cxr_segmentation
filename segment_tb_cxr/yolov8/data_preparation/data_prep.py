@@ -14,8 +14,7 @@ def write_images(output_folder, input_img_filename):
 
     The scripts in YOLOv8 read the jpeg/png/tiff images which are scaled to [0-255].
     This functions read the TB Portals images and then saves them in png format with the
-    intensity ranges scaled to [0-255]. These converted images are saved in output_folder
-    with the same name as the input filename.
+    intensity ranges scaled to [0-255].
 
     ''
 
@@ -34,6 +33,9 @@ def write_images(output_folder, input_img_filename):
         output_folder, (os.path.basename(input_img_filename) + ".png",)
     )
 
+    # The converted images are saved in output_folder with the same name as the input filename
+    # All the training and inference of the images are done on the same image input type
+    # which is uint8 [[0-255].
     sitk.WriteImage(
         sitk.Cast(sitk.RescaleIntensity(img), sitk.sitkUInt8), output_img_filename
     )

@@ -17,24 +17,29 @@ import pickle
 def objective(
     trial, train_csv_path, val_csv_path, model_info, output_model_filename, key
 ):
-    trial_model_info = {}
+    trial_model_info = {
+        "fixed_variables": model_info["fixed_variables"],
+        "range_variables": {},
+        "categorical_variables": {},
+    }
+
     for key in model_info["range_variables"].keys():
         if type(model_info[key][0]) == int:
-            trial_model_info[key] = trial.suggest_int(
+            trial_model_info["range_variables"][key] = trial.suggest_int(
                 key,
                 model_info["range_variables"][key][0],
                 model_info["range_variables"][key][1],
-            )
-        elif type(model_info[key][0]) == str:
-            trial_model_info[key] = trial.suggest_categorical(
-                key, model_info["range_variables"][key]
             )
         else:
-            trial_model_info[key] = trial.suggest_float(
+            trial_model_info["range_variables"][key] = trial.suggest_float(
                 key,
                 model_info["range_variables"][key][0],
                 model_info["range_variables"][key][1],
             )
+    for key in model_info["categorical_variables"].keys():
+        trial_model_info["categorical_variables"][key] = trial.suggest_categorical(
+            key, model_info["categorical_variables"][key]
+        )
 
     print(trial_model_info)
     train_loader, val_loader = _configure_data_preprocess(

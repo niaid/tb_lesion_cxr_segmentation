@@ -7,7 +7,24 @@ import multiprocessing
 from functools import partial
 from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import _read_image
 from nnunet.dataset_conversion.utils import generate_dataset_json
+import subprocess
 
+# for nnUNEt data preparation, the below folders must be created to be exported
+# as environment variables for nnUNet preprocessing, training and inference.
+
+raw_database = "nnUNet_raw"
+preprocessed_dir = "nnUNet_preprocessed"
+results_dir = "nnUNet_results"
+
+if not os.path.exists(raw_database):
+    os.makedirs(raw_database)
+    os.environ[raw_database] = raw_database
+if not os.path.exists(preprocessed_dir):
+    os.makedirs(preprocessed_dir)
+    os.environ[preprocessed_dir] = preprocessed_dir
+if not os.path.exists(results_dir):
+    os.makedirs(results_dir)
+    os.environ[results_dir] = results_dir
 
 """
 This script prepaares dataset for nnUNet training. Make sure to export the
@@ -35,32 +52,13 @@ def write_images(output_folder, input_img_filename):
 
     """
 
-    img = _read_image(input_img_filename)
-
-    new_size = list(img.GetSize())
-    new_size.append(1)  # Adding an extra dimension
-
-    # Create a new image with the desired size
-    new_image = sitk.Image(
-        new_size, img.GetPixelID(), img.GetNumberOfComponentsPerPixel()
-    )
-
-    # Copy the original image data into the new image
-    new_image.CopyInformation(img)
-    new_image = sitk.Paste(new_image, img, img.GetSpacing(), destinationIndex=(0, 0, 0))
-
-    # Set the spacing for the new image
-    new_spacing = list(img.GetSpacing())
-    new_spacing.append(
-        img.GetSpacing()[-1]
-    )  # Keeping the spacing along the new dimension same as the last dimension
-    new_image.SetSpacing(new_spacing)
+    img = sitk.JoinSeries([_read_image(input_img_filename)])
 
     output_img_filename = os.path.join(
         output_folder, (os.path.basename(input_img_filename) + "_0000.nrrd",)
     )
 
-    sitk.WriteImage(new_image, output_img_filename)
+    sitk.WriteImage(img, output_img_filename)
 
 
 def write_labels(output_folder, reference_filename):
@@ -88,6 +86,31 @@ def write_labels(output_folder, reference_filename):
 
 
 def write_images_and_labels(train_val_df, test_df, output_folder):
+    """
+    nnUNet requires creation of "nnUNet_raw" directory and a dataset name(i.e, output_folder)
+    as a subdirectory within that directory and training("imagesTr") and testing("imagesTs") sub directories
+    along with the label masks ("labelsTr" and "labelsTs") respectively. Subsequently
+    this function prepares the input images and labels so that nnUNet can
+    preprocess, train and inference on the datasets.
+
+    Args:
+        train_val_df(pd.DataFrame): Concatenated  training and validation Dataframe
+                                    with the columns of processed_Filename and
+                                    Output_tb_seg_filename corresponding
+                                    to the input CXR filenames and the
+                                    label filenames respectively.
+
+        test_df(pd.DataFrame): Testing Dataframe with the columns of processed_Filename
+                                and Output_tb_seg_filename corresponding
+                                to the input CXR filenames and the
+                                label filenames respectively.
+        output_folder(str): Dataset name that gets created as 'Dataset001_{output_folder}'
+                            within 'nnUNet_raw'
+    Returns:
+          ---
+
+    """
+
     train_val_img_directory = os.path.join("nnUNet_raw", output_folder, "imagesTr")
     train_val_label_directory = os.path.join("nnUNet_raw", output_folder, "labelsTr")
 
@@ -147,8 +170,8 @@ def main():
         type=str,
         help="Output folder that user should give to save the files in \
              imagesTr,imagesTs,labelsTr,labelsTs subfolders as required per nnUNet training.This \
-             folder name should be in the format of E.g : Task001_lungsegmentation.This folder \
-             should exist in the directory stricture of nnUNet/",
+             folder that will be created will be in the format of E.g : Dataset001_{folder_name}.This folder \
+             gets created  as a subdirectory within  the directory of nnUNet_raw/",
     )
 
     args = parser.parse_args()
@@ -162,11 +185,26 @@ def main():
     write_images_and_labels(train_val_df, test_df, args.folder_name)
 
     generate_dataset_json(
-        output_file=os.path.join("nnUNet_raw", args.folder_name, "dataset.json"),
-        imagesTr_dir=os.path.join("nnUNet_raw", args.folder_name, "imagesTr"),
-        imagesTs_dir=os.path.join("nnUNet_raw", args.folder_name, "imagesTs"),
-        labels={"0": "background", "1": "foreground"},
+        output_file=os.path.join(
+            "nnUNet_raw", "Dataset001_" + args.folder_name, "dataset.json"
+        ),
+        imagesTr_dir=os.path.join(
+            "nnUNet_raw", "Dataset001_" + args.folder_name, "imagesTr"
+        ),
+        imagesTs_dir=os.path.join(
+            "nnUNet_raw", "Dataset001_" + args.folder_name, "imagesTs"
+        ),
+        labels={"background": 0, "TB": 1},
         dataset_name=args.folder_name,
+    )
+
+    subprocess.call(
+        [
+            "nnUNetv2_plan_and_preprocess",
+            "-d",
+            "001",
+            "--verify_dataset_integrity",
+        ]
     )
 
 

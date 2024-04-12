@@ -22,11 +22,6 @@ def main():
         type=str,
         help="output folder to save the predictions",
     )
-    parser.add_argument(
-        "output_folder",
-        type=str,
-        help="output folder to save the predictions",
-    )
     args = parser.parse_args()
 
     subprocess.call(

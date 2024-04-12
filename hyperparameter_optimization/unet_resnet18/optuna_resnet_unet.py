@@ -14,9 +14,7 @@ from functools import partial
 import pickle
 
 
-def objective(
-    trial, train_csv_path, val_csv_path, model_info, output_model_filename, key
-):
+def objective(trial, train_csv_path, val_csv_path, model_info, output_model_filename):
     trial_model_info = {
         "fixed_variables": model_info["fixed_variables"],
         "range_variables": {},

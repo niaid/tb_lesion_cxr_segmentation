@@ -1,7 +1,7 @@
 # TB lesion segmentation in Chest X Rays
 This folder contains contents that are useful to segment "TB lesions"  in X - rays by semantic segmentation.
 
-The segmentation models are developed using UNet (with Resnet18 as encoder architecture initialized with 'imagenet' weights) and YOLOv8(m- Initialized with pretrained 'coco' weights)
+The segmentation models are developed using UNet (with Resnet18 as encoder architecture initialized with 'imagenet' weights) , YOLOv8(m- Initialized with pretrained 'coco' weights) and nnUNet
 
 ## Install the requirements:
 

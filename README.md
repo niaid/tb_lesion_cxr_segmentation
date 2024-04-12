@@ -64,7 +64,7 @@ From the above command, if the user has reference files('Output_tb_seg_filename'
 ### Prepare data for segmentation 
 
 
-For preparing training,validation and testing files. User needs to provide input training,validation and testing csv files containing columns 'processed_Filename' and 'Output_seg_filename' representing input CXR files and reference label files respectively. these files are generated from the data preparation step in the UNet-ResNet18 description. This data preparation script prepares images and labels for each of the split train/val and test accordingly for training the yolov8 model.
+After preparing training,validation and testing files, user needs to provide input training,validation and testing csv files containing columns 'processed_Filename' and 'Output_seg_filename' representing input CXR files and reference label files respectively. these files are generated from the data preparation step in the UNet-ResNet18 description. This data preparation script prepares images and labels for each of the split train/val and test accordingly for training the yolov8 model.
 
 ```
 python -m segment_tb_cxr.yolov8.data_preparation.data_prep tbseg_train.csv  tbseg_val.csv tbseg_test.csv "yolov8_dataset" tblesion_segment.yaml
@@ -101,3 +101,43 @@ python -m segment_tb_cxr.evaluation.evaluate_segmentations input_csv_path overla
 ```
 From the above command, if the user has reference files('Output_tb_seg_filename') for each input CXR file, then they can use the above command to generate the overlap results  between the reference files and the predicted segmentation files. The input csv file must contain the columns 'Output_tb_seg_filename' and 'pred_tb_seg_file' representing the reference and the predicted segmentation file respectively.
 
+## nnUNet:
+
+### Prepare data for segmentation 
+
+
+After preparing training,validation and testing files, User needs to provide input training,validation and testing csv files containing columns 'processed_Filename' and 'Output_seg_filename' representing input CXR files and reference label files respectively. Description on how to generate these files were present in "Prepare data for segmentation" section . This data preparation script prepares images and labels for each of the split train/val and test accordingly for training the yolov8 model. tblungcxr is suffix (Fullname: Dataset001_tblungcxr) for the output folder name where the nnUNet images are saved.
+
+```
+python -m segment_tb_cxr.nnunet.data_preparation.data_prep tbseg_train.csv  tbseg_val.csv tbseg_test.csv "tblungcxr"
+```
+
+### Training
+
+After running the above command user will approximately see the number of files for train / val / test dataset folders :
+
+'Train': 4429
+'Val' : 949
+'Test': 950
+
+As this is a simple task to train user can give a fraction amount by which these images can be utilized. Below command shows the example of training for fold number of 0
+```
+python -m segment_tb_cxr.training.train_tb_segment 001 0
+```
+
+### Inference
+
+To run the inference results from the model, user can run the below command.
+
+Please first make sure to install the environment using requirements.txt file .
+```
+python -m segment_tb_cxr.nnunet.inference.inference_tb_segment  imagesTs predsTs
+```
+
+imagesTs is the input folder containing images with the extension of _0000.nrrd. predsTs is the prediction folder.
+### Evaluation:
+
+```
+python -m segment_tb_cxr.evaluation.evaluate_segmentations input_csv_path overlap_results.csv
+```
+From the above command, if the user has reference files('Output_tb_seg_filename') for each input CXR file, then they can use the above command to generate the overlap results  between the reference files and the predicted segmentation files. The input csv file must contain the columns 'Output_tb_seg_filename' and 'pred_tb_seg_file' representing the reference and the predicted segmentation file respectively.

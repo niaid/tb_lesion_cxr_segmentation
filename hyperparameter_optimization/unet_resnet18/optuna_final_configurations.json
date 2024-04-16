@@ -1,0 +1,33 @@
+{
+    "fixed_variables":
+                        {
+                            "img_size": [224, 224],
+                            "spatial_size": [96,96],
+                            "means":[0.485, 0.456, 0.406],
+                            "standard_deviation": [0.229, 0.224, 0.225],
+                            "roi_size":[96,96],
+                            "sw_batch_size": 4,
+                            "threshold": 0.5,
+                            "num_workers": 4,
+                            "epochs": 500,
+                            "prob_rotation": 0.5,
+                            "num_crop_samples":[2,8],
+                            "pos":[2,8],  
+                            "batch_size": [8,64],   
+                                                    
+                        },
+    "range_variables":
+                        {
+
+                            "learning_rate": [1e-5, 1e-2], 
+                            "momentum": [0.1,0.99],
+                            "neg":[2,8],
+                            "rotation_degree":[0,180],
+                            "prob_rotation":[0,1]
+                        },
+     "categorical_variables":
+                             {
+                              "optimizer": ["Adam","SGD"]
+                             }  
+
+  }

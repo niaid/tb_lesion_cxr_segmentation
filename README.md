@@ -7,7 +7,7 @@ The segmentation models are developed using UNet (with Resnet18 as encoder archi
 
 User needs to install a conda environment and run the below command line to install all the required frameworks. User also needs to install a [git-lfs](https://git-lfs.com/) in their machine  to downlaod the weight files from this repository.
 ```
-pip install -r requirements.txt
+conda env create -f environment.yml
 ```
 
 ## Prepare data for segmentation 
@@ -141,3 +141,47 @@ imagesTs is the input folder containing images with the extension of _0000.nrrd.
 python -m segment_tb_cxr.evaluation.evaluate_segmentations input_csv_path overlap_results.csv
 ```
 From the above command, if the user has reference files('Output_tb_seg_filename') for each input CXR file, then they can use the above command to generate the overlap results  between the reference files and the predicted segmentation files. The input csv file must contain the columns 'Output_tb_seg_filename' and 'pred_tb_seg_file' representing the reference and the predicted segmentation file respectively.
+
+
+## Hyperparameter optimization:
+Hyperparameter optimization is conducted initially on the smaller dataset to find the most important features using optuna. This is conducted using easy parallelization as suggested by this [link](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html). To create a sample RDB server (postgresql in the below example) for this process, user can follow the below steps.
+
+After installing the appropriate frameworks from the environment.yml file, user needs to set up the data base directory. user can setup the directory by creating the directory and then
+give that path to the postgresql server.
+
+```
+pg_ctl -D /path/to/postgres/data_directory start
+```
+
+If the user is initializing the directory for the first time, user needs to run the below command:
+```
+initdb -D /path/to/postgres/data_directory
+```
+ 
+User then needs to open the sql database by typing in 
+```
+psql -U {username}
+```
+
+Once you're in the psql terminal, you can create a new database using the CREATE DATABASE SQL command. For example, to create a database named optuna_db, you can run:
+```
+CREATE DATABASE optuna_db;
+```
+
+Optionally, you can create a new user with privileges for the database. This step is recommended for better security and access control. 
+For example, to create a user named optuna_user with a password and grant it access to the optuna_db database, you can run:
+```
+CREATE USER optuna_user WITH PASSWORD {password};
+GRANT ALL PRIVILEGES ON DATABASE optuna_db TO optuna_user;
+```
+Exit the terminal:
+```
+\q
+```
+
+Now after creating the appropriate username, password and database user can now run the optuna hyperparameter optimization by running the following command:
+In the below command, user needs to provide the arguments for optuna_configurations to provide for the variables that needs optimization and the variables that don't need any. user also needs to provide the input for training and validation files that are generated from "Prepare data for segmentation" section. Then user needs to provide the argument for weight filename that gets saved for each hyperparameter set as {For example if the user provies a filename to save the ouput weight filename as tbseg_hyperparameter_optimized.pt. The generated output weight files are saved as {provided weight filename_learning_rate_0.2_batch_size_64_num_workers_8_loss....pt}.  Then user needs to provide the number of trials to be conducted for the given study. Then user also needs to provide the postgressql link generated from the above instructions and finally the study name.
+```
+python hyperparameter_optimization.unet_resnet18.optuna_resnet hyperparameter_optimization/unet_resnet18/optuna_initial_configurations.json tbseg_train.csv tbseg_val.csv  tbseg_hyperparameter_optimized.pt  
+100 'postgresql://username:password@localhost/optuna_db' example_study
+```

@@ -1,0 +1,17 @@
+name: tb_segmentation
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - postgresql
+  - pip:
+      - simpleitk=2.0.0
+      - pandas=0.25.3
+      - scikit-learn
+      - pydicom
+      - monai
+      - numpy=1.23.1
+      - ultralytics
+      - nnunetv2
+      - optuna
+

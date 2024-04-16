@@ -12,6 +12,8 @@ import json
 from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import _load_model
 from functools import partial
 import pickle
+from optuna.storages import RDBStorage
+from optuna.samplers import TPESampler
 
 
 def objective(trial, train_csv_path, val_csv_path, model_info, output_model_filename):
@@ -21,12 +23,20 @@ def objective(trial, train_csv_path, val_csv_path, model_info, output_model_file
         "categorical_variables": {},
     }
 
+    output_model_filename = output_model_filename.split(".pt")[0]
     for key in model_info["range_variables"].keys():
-        if type(model_info[key][0]) == int:
+        if type(model_info["range_variables"][key][0]) == int:
             trial_model_info["range_variables"][key] = trial.suggest_int(
                 key,
                 model_info["range_variables"][key][0],
                 model_info["range_variables"][key][1],
+            )
+            output_model_filename = (
+                output_model_filename
+                + "_"
+                + key
+                + "_"
+                + trial_model_info["range_variables"][key]
             )
         else:
             trial_model_info["range_variables"][key] = trial.suggest_float(
@@ -34,15 +44,31 @@ def objective(trial, train_csv_path, val_csv_path, model_info, output_model_file
                 model_info["range_variables"][key][0],
                 model_info["range_variables"][key][1],
             )
+            output_model_filename = (
+                output_model_filename
+                + "_"
+                + key
+                + "_"
+                + trial_model_info["range_variables"][key]
+            )
     for key in model_info["categorical_variables"].keys():
         trial_model_info["categorical_variables"][key] = trial.suggest_categorical(
             key, model_info["categorical_variables"][key]
+        )
+        output_model_filename = (
+            output_model_filename
+            + "_"
+            + key
+            + "_"
+            + trial_model_info["categorical_variables"][key]
         )
 
     print(trial_model_info)
     train_loader, val_loader = _configure_data_preprocess(
         train_csv_path, val_csv_path, trial_model_info
     )
+
+    output_model_filename = output_model_filename + ".pt"
 
     train_model(train_loader, val_loader, model_info, output_model_filename)
 
@@ -99,6 +125,13 @@ def main(argv=None):
               based on its best dice score on valid data",
     )
     parser.add_argument("num_trials", type=int, help="No. of trials")
+    parser.add_argument(
+        "postgressql_url",
+        type=str,
+        help="This is the lPostGRES connection link to the database. \
+                        User can create this link by following the appropriate instructions\
+                        from the readme file",
+    )
     parser.add_argument("study_name", type=str, help="Study name in pickle format")
     args = parser.parse_args()
 
@@ -114,8 +147,14 @@ def main(argv=None):
         output_model_filename=args.output_model_filename,
     )
 
+    # Create RDBStorage object
+    storage = RDBStorage(url=args.postgres_url)
+
     # Run optimization
-    study = optuna.create_study()
+    study = optuna.create_study(
+        storage=storage, study_name=args.study_name, sampler=TPESampler()
+    )
+
     study.optimize(objective_with_args, n_trials=args.num_trials)
 
     # Save study to a file

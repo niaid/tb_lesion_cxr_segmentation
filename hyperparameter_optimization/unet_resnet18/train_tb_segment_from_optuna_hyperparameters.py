@@ -136,9 +136,9 @@ def get_transforms(model_info):
                 keys=["img", "seg"],
                 label_key="seg",
                 spatial_size=model_info["fixed_variables"]["spatial_size"],
-                pos=model_info["fixed_variables"]["pos"],
+                pos=model_info["range_variables"]["pos"],
                 neg=model_info["range_variables"]["neg"],
-                num_samples=model_info["fixed_variables"]["num_crop_samples"],
+                num_samples=model_info["range_variables"]["num_crop_samples"],
             ),
             RandRotated(
                 keys=["img", "seg"],
@@ -146,7 +146,7 @@ def get_transforms(model_info):
                     np.deg2rad(-model_info["range_variables"]["rotation_degree"]),
                     np.deg2rad(model_info["range_variables"]["rotation_degree"]),
                 ),
-                prob=model_info["fixed_variables"]["prob_rotation"],
+                prob=model_info["range_variables"]["prob_rotation"],
                 mode=("bilinear", "nearest"),
             ),
         ]
@@ -251,9 +251,9 @@ def _configure_data_preprocess(train_csv_path, val_csv_path, model_info):
     # generate batch_size x 4 images for network training
     train_loader = DataLoader(
         train_ds,
-        batch_size=model_info["fixed_variables"]["batch_size"],
+        batch_size=model_info["range_variables"]["batch_size"],
         shuffle=True,
-        num_workers=model_info["fixed_variables"]["num_workers"],
+        num_workers=model_info["range_variables"]["num_workers"],
         collate_fn=custom_train_collate_batch,
         pin_memory=torch.cuda.is_available(),
     )
@@ -262,13 +262,22 @@ def _configure_data_preprocess(train_csv_path, val_csv_path, model_info):
     val_ds = monai.data.SmartCacheDataset(data=val_files, transform=val_transforms)
     val_loader = DataLoader(
         val_ds,
-        batch_size=model_info["fixed_variables"]["batch_size"],
-        num_workers=model_info["fixed_variables"]["num_workers"],
+        batch_size=model_info["range_variables"]["batch_size"],
+        num_workers=model_info["range_variables"]["num_workers"],
         collate_fn=custom_val_collate_batch,
         pin_memory=torch.cuda.is_available(),
     )
 
     return train_loader, val_loader
+
+
+def get_params(df, model_info, index):
+    for key in model_info["range_variables"].keys():
+        model_info["range_variables"][key] = df["params_" + key].values[index]
+    for key in model_info["categorical_variables"].keys():
+        model_info["categorical_variables"][key] = df["params_" + key].values[index]
+
+    return model_info
 
 
 def train_model(
@@ -322,10 +331,10 @@ def train_model(
     writer = SummaryWriter(comment=output_model_filename.split("/")[-1].split(".pt")[0])
 
     val_interval = 1
-    epochs = model_info["fixed_variables"]["epochs"]
+    epochs = model_info["range_variables"]["epochs"]
     best_val_loss = float("inf")
 
-    for epoch in range(model_info["fixed_variables"]["epochs"]):
+    for epoch in range(model_info["range_variables"]["epochs"]):
         t1 = time.time()
         print("-" * 10)
         print(f"epoch {epoch + 1}/" + str(epochs))
@@ -426,10 +435,14 @@ def main(argv=None):
               based on its best dice score on valid data",
     )
     parser.add_argument(
-        "--plot_images_for_debugging",
-        type=bool,
-        default=False,
-        help="plot_images_for_debugging during the training",
+        "trial_values_path",
+        type=pathlib.Path,
+        help="Dataframe containing values of the trials.",
+    )
+    parser.add_argument(
+        "index",
+        type=str,
+        help="Index in the dataframe or trial number",
     )
 
     args = parser.parse_args()
@@ -437,6 +450,8 @@ def main(argv=None):
     with open(str(args.model_info_json_path)) as f:
         model_info = json.load(f)
 
+    trial_values_df = pd.read_csv(args.trial_values_path)
+    model_info = get_params(trial_values_df, model_info, args.index)
     # Get training and validation data loaders for training and save the best
     # model based on validation data
     train_loader, val_loader = _configure_data_preprocess(

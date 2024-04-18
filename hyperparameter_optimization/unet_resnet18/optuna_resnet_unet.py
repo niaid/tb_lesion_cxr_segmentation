@@ -43,7 +43,33 @@ samplers = {
 def objective(
     trial, device_id, train_csv_path, val_csv_path, model_info, output_model_filename
 ):
-    print(trial)
+    """
+    Objective function to minimize.
+
+    Args:
+      trial(optuna.trial): Optuna trial with which hyperparameters are chosen based
+                           sampler.
+      device_id(str): GPU device id to run the deep learning model on.
+      train_csv_path(str): Training csv path containing column names of
+                           processed_Filename and 'Output_tb_seg_filename'
+                           respectively.
+      val_csv_path(str): Validation csv path containing column names of
+                         processed_Filename and 'Output_tb_seg_filename'
+                         respectively.
+      model_info(dict): Model containing keys of fixed_variables,
+                        range_variables and categorical_variables as keys
+                        and the values corresponding to each of the keys.
+      output_model_filename(str): Output model filename with the extension as
+                                  .pt .Each of the iteration will save
+                                  a weight file named as for e.g:
+                                  output_model_filename_learning_rate_0.01_
+                                  momentum_0.8_batch_size_64....pt
+
+    Returns:
+      val_epoch_loss(float): Minimum validation loss returned from all of the
+                             training for the set of hyperparameters that the
+                             trial has chosen.
+    """
     trial_model_info = {
         "fixed_variables": model_info["fixed_variables"],
         "range_variables": {},

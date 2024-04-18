@@ -13,10 +13,37 @@ from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import _load_mo
 from functools import partial
 import pickle
 from optuna.storages import RDBStorage
-from optuna.samplers import TPESampler
+from optuna.samplers import (
+    BaseSampler,
+    GridSampler,
+    RandomSampler,
+    TPESampler,
+    CmaEsSampler,
+    PartialFixedSampler,
+    NSGAIISampler,
+    QMCSampler,
+    BruteForceSampler,
+    IntersectionSearchSpace,
+)
+
+samplers = {
+    "base": BaseSampler,
+    "grid": GridSampler,
+    "random": RandomSampler,
+    "tpe": TPESampler,
+    "cmaes": CmaEsSampler,
+    "partialfixed": PartialFixedSampler,
+    "nsgaii": NSGAIISampler,
+    "qmc": QMCSampler,
+    "bruteforce": BruteForceSampler,
+    "iss": IntersectionSearchSpace,
+}
 
 
-def objective(trial, train_csv_path, val_csv_path, model_info, output_model_filename):
+def objective(
+    trial, device_id, train_csv_path, val_csv_path, model_info, output_model_filename
+):
+    print(trial)
     trial_model_info = {
         "fixed_variables": model_info["fixed_variables"],
         "range_variables": {},
@@ -36,7 +63,7 @@ def objective(trial, train_csv_path, val_csv_path, model_info, output_model_file
                 + "_"
                 + key
                 + "_"
-                + trial_model_info["range_variables"][key]
+                + str(trial_model_info["range_variables"][key])
             )
         else:
             trial_model_info["range_variables"][key] = trial.suggest_float(
@@ -49,7 +76,7 @@ def objective(trial, train_csv_path, val_csv_path, model_info, output_model_file
                 + "_"
                 + key
                 + "_"
-                + trial_model_info["range_variables"][key]
+                + str(trial_model_info["range_variables"][key])
             )
     for key in model_info["categorical_variables"].keys():
         trial_model_info["categorical_variables"][key] = trial.suggest_categorical(
@@ -70,7 +97,9 @@ def objective(trial, train_csv_path, val_csv_path, model_info, output_model_file
 
     output_model_filename = output_model_filename + ".pt"
 
-    train_model(train_loader, val_loader, model_info, output_model_filename)
+    train_model(
+        train_loader, val_loader, trial_model_info, device_id, output_model_filename
+    )
 
     model, device = _load_model(output_model_filename.split(".pt")[0] + "_loss.pt")
 
@@ -84,7 +113,7 @@ def objective(trial, train_csv_path, val_csv_path, model_info, output_model_file
         model, model_info, loss_function, val_loader, post_trans
     )
 
-    trial.report(val_epoch_loss, trial_model_info)
+    trial.report(val_epoch_loss, 1)
 
     # Handle pruning based on the intermediate value.
     if trial.should_prune():
@@ -105,15 +134,14 @@ def main(argv=None):
     )
     parser.add_argument(
         "train_input_csv_path",
-        type=pathlib.Path,
+        type=str,
         help="Input CSV path containing column names as 'Filename' ,'Output_tb_seg_filename'which represent \
                                 training files of Chest X Rays and their respective \
                                  reference labels respectively",
     )
-
     parser.add_argument(
         "val_input_csv_path",
-        type=pathlib.Path,
+        type=str,
         help="Input CSV path containing column names as 'Filename' ,'Output_tb_seg_filename' which represent \
                                 validation files of Chest X Rays and their respective \
                                  reference labels respectively",
@@ -128,11 +156,12 @@ def main(argv=None):
     parser.add_argument(
         "postgressql_url",
         type=str,
-        help="This is the lPostGRES connection link to the database. \
+        help="This is the PostGRES connection link to the database. \
                         User can create this link by following the appropriate instructions\
                         from the readme file",
     )
     parser.add_argument("study_name", type=str, help="Study name in pickle format")
+    parser.add_argument("device_id", type=str, help="Device id no.")
     args = parser.parse_args()
 
     with open(str(args.model_info_json_path)) as f:
@@ -141,6 +170,7 @@ def main(argv=None):
     # Create a partial function with fixed arguments
     objective_with_args = partial(
         objective,
+        device_id=args.device_id,
         train_csv_path=args.train_input_csv_path,
         val_csv_path=args.val_input_csv_path,
         model_info=model_info,
@@ -148,17 +178,21 @@ def main(argv=None):
     )
 
     # Create RDBStorage object
-    storage = RDBStorage(url=args.postgres_url)
+    storage = RDBStorage(url=args.postgressql_url)
 
-    # Run optimization
+    # create a study object with it's properties.
     study = optuna.create_study(
-        storage=storage, study_name=args.study_name, sampler=TPESampler()
+        storage=storage,
+        study_name=args.study_name,
+        sampler=samplers[model_info["fixed_variables"]["trial_sampler"]](),
+        load_if_exists=True,
     )
 
+    # Run optimization
     study.optimize(objective_with_args, n_trials=args.num_trials)
 
     # Save study to a file
-    with open(args.study_name, "wb") as f:
+    with open(args.study_name + ".pkl", "wb") as f:
         pickle.dump(study, f)
 
     # Get feature importances

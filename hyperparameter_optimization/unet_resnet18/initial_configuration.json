@@ -7,7 +7,8 @@
                             "standard_deviation": [0.229, 0.224, 0.225],
                             "roi_size":[96,96],
                             "sw_batch_size": 4,
-                            "threshold": 0.5
+                            "threshold": 0.5,
+                            "trial_sampler":"tpe"
                         },
     "range_variables":
                         {
@@ -15,12 +16,12 @@
                             "num_workers": [2,8], 
                             "learning_rate": [1e-5, 1e-2], 
                             "momentum": [0.1,0.99],
-                            "epochs": [50,150],
+                            "epochs": [2,3],
                             "num_crop_samples":[2,8],
                             "pos":[2,8],
                             "neg":[2,8],
                             "rotation_degree":[0,180],
-                            "prob_rotation":[0,1]
+                            "prob_rotation":[0.001,0.99]
                         },
      "categorical_variables":
                              {

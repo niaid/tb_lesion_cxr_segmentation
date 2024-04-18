@@ -9,11 +9,12 @@
                             "sw_batch_size": 4,
                             "threshold": 0.5,
                             "num_workers": 4,
-                            "epochs": 500,
+                            "epochs": 2,
                             "prob_rotation": 0.5,
-                            "num_crop_samples":[2,8],
-                            "pos":[2,8],  
-                            "batch_size": [8,64],   
+                            "num_crop_samples":4,
+                            "pos":6,  
+                            "batch_size": 64,   
+                            "trial_sampler":"tpe"
                                                     
                         },
     "range_variables":
@@ -23,7 +24,7 @@
                             "momentum": [0.1,0.99],
                             "neg":[2,8],
                             "rotation_degree":[0,180],
-                            "prob_rotation":[0,1]
+                            "prob_rotation":[0.01,0.99]
                         },
      "categorical_variables":
                              {

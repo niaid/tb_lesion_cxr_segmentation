@@ -121,7 +121,7 @@ def get_transforms(model_info):
             EnsureChannelFirstd(keys=["img", "seg"]),
             Resized(
                 keys=["img", "seg"],
-                spatial_size=model_info["img_size"],
+                spatial_size=model_info["fixed_variables"]["img_size"],
                 mode=("bilinear", "nearest"),
             ),
             RepeatChanneld(keys=["img", "seg"], repeats=3),
@@ -158,7 +158,7 @@ def get_transforms(model_info):
             EnsureChannelFirstd(keys=["img", "seg"]),
             Resized(
                 keys=["img", "seg"],
-                spatial_size=model_info["img_size"],
+                spatial_size=model_info["fixed_variables"]["img_size"],
                 mode=("bilinear", "nearest"),
             ),
             RepeatChanneld(keys=["img", "seg"], repeats=3),
@@ -177,7 +177,9 @@ def get_transforms(model_info):
             LoadImaged(keys=["img"]),
             EnsureChannelFirstd(keys=["img"]),
             Resized(
-                keys=["img"], spatial_size=model_info["img_size"], mode=("bilinear")
+                keys=["img"],
+                spatial_size=model_info["fixed_variables"]["img_size"],
+                mode=("bilinear"),
             ),
             RepeatChanneld(keys=["img"], repeats=3),
             ScaleIntensityd(keys=["img"]),
@@ -275,8 +277,9 @@ def train_model(
     train_loader,
     val_loader,
     model_info,
+    device_id,
     output_model_filename,
-    plot_images_for_debugging,
+    plot_images_for_debugging=True,
 ):
     """
     Train the model with network loaded with hyper parameters. Model saves with

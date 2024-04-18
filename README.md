@@ -146,42 +146,64 @@ From the above command, if the user has reference files('Output_tb_seg_filename'
 ## Hyperparameter optimization:
 Hyperparameter optimization is conducted initially on the smaller dataset to find the most important features using optuna. This is conducted using easy parallelization as suggested by this [link](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html). To create a sample RDB server (postgresql in the below example) for this process, user can follow the below steps.
 
-After installing the appropriate frameworks from the environment.yml file, user needs to set up the data base directory. user can setup the directory by creating the directory and then
-give that path to the postgresql server.
+After installing the postgressql package (see environment.yml file), set up the data base directory.
 
+
+To initialize the directory for the first time (one time run):
+```
+initdb -D /path/to/postgres/data_directory
+```
+
+Start the database server in a specific directory:
 ```
 pg_ctl -D /path/to/postgres/data_directory start
 ```
 
-If the user is initializing the directory for the first time, user needs to run the below command:
+To stop the database:
 ```
-initdb -D /path/to/postgres/data_directory
-```
- 
-User then needs to open the sql database by typing in 
-```
-psql -U {username}
+pg_ctl -D /path/to/postgres/data_directory stop
 ```
 
-Once you're in the psql terminal, you can create a new database using the CREATE DATABASE SQL command. For example, to create a database named optuna_db, you can run:
+
+Open the sql database:
 ```
-CREATE DATABASE optuna_db;
+psql -U username
 ```
 
-Optionally, you can create a new user with privileges for the database. This step is recommended for better security and access control. 
-For example, to create a user named optuna_user with a password and grant it access to the optuna_db database, you can run:
+Once you're in the psql terminal, create a new database using the CREATE DATABASE SQL command:
 ```
-CREATE USER optuna_user WITH PASSWORD {password};
-GRANT ALL PRIVILEGES ON DATABASE optuna_db TO optuna_user;
+CREATE DATABASE database_name;
+```
+
+Do not use the database as a root user. Create a new user with privileges for the database: 
+
+```
+CREATE USER database_username WITH PASSWORD database_password;
+GRANT ALL PRIVILEGES ON DATABASE database_name TO database_username;
 ```
 Exit the terminal:
 ```
 \q
 ```
 
-Now after creating the appropriate username, password and database user can now run the optuna hyperparameter optimization by running the following command:
-In the below command, user needs to provide the arguments for optuna_configurations to provide for the variables that needs optimization and the variables that don't need any. user also needs to provide the input for training and validation files that are generated from "Prepare data for segmentation" section. Then user needs to provide the argument for weight filename that gets saved for each hyperparameter set as {For example if the user provies a filename to save the ouput weight filename as tbseg_hyperparameter_optimized.pt. The generated output weight files are saved as {provided weight filename_learning_rate_0.2_batch_size_64_num_workers_8_loss....pt}.  Then user needs to provide the number of trials to be conducted for the given study. Then user also needs to provide the postgressql link generated from the above instructions and finally the study name.
+After starting the database, run the optuna parrallel optimization as follows:
 ```
-python hyperparameter_optimization.unet_resnet18.optuna_resnet hyperparameter_optimization/unet_resnet18/optuna_initial_configurations.json tbseg_train.csv tbseg_val.csv  tbseg_hyperparameter_optimized.pt  
-100 'postgresql://username:password@localhost/optuna_db' example_study
+python -m hyperparameter_optimization.unet_resnet18.optuna_resnet_unet hyperparameter_optimization/unet_resnet18/final_configuration.json tbseg_train.csv tbseg_val.csv segment_tb_cxr/unet_resnet18/weights/output_model_filename 100 'postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db' sample_study 0
 ```
+
+Input arguments for the above command are:
+
+model_info_json_path: optuna configuration listing the variables that are optimized ("rangeand those that have fixed values.
+train_input_csv_path: CSV file containing training files and labels with column names 'processed_Filename' and 'Output_tb_seg_filename' rspectively.
+val_input_csv_path: CSV file containing validation files and labels with column names 'processed_Filename' and 'Output_tb_seg_filename' respectively.
+model_weight_path: Output model weight path to save the weight files with the prefixes provided as the name of the weight file along with the hyperparameter combination in the name.
+num_trial: Number of trials to conduct
+postgres_sql: Postgres sql database link used for storage of results during parallelization.
+study_name: Name of the study.
+gpu_id: GPU device id
+
+Outputs:
+Generates best loss model weights for each of the hyperparameter set and saves the results in the RDBS database under the study_name.
+
+To submit a slurm job of bash script with one GPU, for running the optimization, refer [single_run.sh](https://github.com/niaid/tb_lesion_cxr_segmentation/tree/main/hyperparameter_optimization/unet_resnet18/single_run.sh)
+To submit a slurm job of bash script requesting for multiple GPUs, for running the optimization, refer [parallel_run.sh](https://github.com/niaid/tb_lesion_cxr_segmentation/tree/main/hyperparameter_optimization/unet_resnet18/parallel_run.sh)  script.

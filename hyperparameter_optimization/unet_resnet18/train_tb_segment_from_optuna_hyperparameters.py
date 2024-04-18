@@ -121,7 +121,7 @@ def get_transforms(model_info):
             EnsureChannelFirstd(keys=["img", "seg"]),
             Resized(
                 keys=["img", "seg"],
-                spatial_size=model_info["img_size"],
+                spatial_size=model_info["fixed_variables"]["img_size"],
                 mode=("bilinear", "nearest"),
             ),
             RepeatChanneld(keys=["img", "seg"], repeats=3),
@@ -136,15 +136,15 @@ def get_transforms(model_info):
                 keys=["img", "seg"],
                 label_key="seg",
                 spatial_size=model_info["fixed_variables"]["spatial_size"],
-                pos=model_info["range_variables"]["pos"],
-                neg=model_info["range_variables"]["neg"],
-                num_samples=model_info["range_variables"]["num_crop_samples"],
+                pos=int(model_info["range_variables"]["pos"]),
+                neg=int(model_info["range_variables"]["neg"]),
+                num_samples=int(model_info["range_variables"]["num_crop_samples"]),
             ),
             RandRotated(
                 keys=["img", "seg"],
                 range_x=(
-                    np.deg2rad(-model_info["range_variables"]["rotation_degree"]),
-                    np.deg2rad(model_info["range_variables"]["rotation_degree"]),
+                    np.deg2rad(-int(model_info["range_variables"]["rotation_degree"])),
+                    np.deg2rad(int(model_info["range_variables"]["rotation_degree"])),
                 ),
                 prob=model_info["range_variables"]["prob_rotation"],
                 mode=("bilinear", "nearest"),
@@ -158,7 +158,7 @@ def get_transforms(model_info):
             EnsureChannelFirstd(keys=["img", "seg"]),
             Resized(
                 keys=["img", "seg"],
-                spatial_size=model_info["img_size"],
+                spatial_size=model_info["fixed_variables"]["img_size"],
                 mode=("bilinear", "nearest"),
             ),
             RepeatChanneld(keys=["img", "seg"], repeats=3),
@@ -177,7 +177,9 @@ def get_transforms(model_info):
             LoadImaged(keys=["img"]),
             EnsureChannelFirstd(keys=["img"]),
             Resized(
-                keys=["img"], spatial_size=model_info["img_size"], mode=("bilinear")
+                keys=["img"],
+                spatial_size=model_info["fixed_variables"]["img_size"],
+                mode=("bilinear"),
             ),
             RepeatChanneld(keys=["img"], repeats=3),
             ScaleIntensityd(keys=["img"]),
@@ -284,8 +286,9 @@ def train_model(
     train_loader,
     val_loader,
     model_info,
+    device_id,
     output_model_filename,
-    plot_images_for_debugging,
+    plot_images_for_debugging=True,
 ):
     """
     Train the model with network loaded with hyper parameters. Model saves with
@@ -303,7 +306,7 @@ def train_model(
        ---
 
     """
-    device = torch.device("cuda")
+    device = torch.device("cuda:" + str(device_id))
 
     model = ResNetUNet(3).to(device)  # Input takes 3 channels encoder is initialized
     # with 'imagenet' weights.

@@ -9,7 +9,6 @@ num_gpus = $2
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=20G
-echo ${SLURM_STEP_GPUS:-$SLURM_JOB_GPUS}
 
 /data/bcbb/kantipudik2/miniconda3/bin/activate lesion_segmentation
 pg_ctl -D postgres_data start

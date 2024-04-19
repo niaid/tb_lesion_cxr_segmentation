@@ -4,7 +4,7 @@ total_trials=$1
 num_gpus = $2
 
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:A100:$((num_gpus))
+#SBATCH --gres=gpu:A100:$num_gpus
 #SBATCH --time=15-00:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
@@ -17,7 +17,7 @@ pg_ctl -D postgres_data start
 echo $total_trials
 
 # Calculate the number of trials per GPU
-trials_per_gpu=$((total_trials / $((num_gpus))))
+trials_per_gpu=$((total_trials / num_gpus))
 
 # Array to store the number of trials for each GPU
 declare -a trials_array
@@ -30,7 +30,7 @@ done
 
 
 # Calculate the remaining trials after evenly distributing them among the GPUs
-remaining_trials=$((total_trials % $((num_gpus))))
+remaining_trials=$((total_trials % num_gpus))
 
 # Assign the remaining trials to the last GPU
 if [ $remaining_trials -gt 0 ]; then

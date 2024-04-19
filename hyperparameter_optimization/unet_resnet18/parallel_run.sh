@@ -48,5 +48,5 @@ for ((i=0; i<${#gpu_ids[@]}; i++)); do
     python_script_arg="${trials_array[$i]}"
     echo ${python_script_arg}
     echo "Executing python script with $python_script_arg trials on GPU $gpu_id"
-    python -m hyperparameter_optimization.unet_resnet18.optuna_resnet_unet hyperparameter_optimization/unet_resnet18/final_configuration.json sample_train.csv sample_train.csv segment_tb_cxr/unet_resnet18/weights/sample.pt "$python_script_arg" postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db parallel_study "$gpu_id" &
+    python -m hyperparameter_optimization.unet_resnet18.optuna_resnet_unet hyperparameter_optimization/unet_resnet18/final_configuration.json sample_train.csv sample_val.csv segment_tb_cxr/unet_resnet18/weights/sample.pt "$python_script_arg" postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db parallel_study "$gpu_id" &
     done

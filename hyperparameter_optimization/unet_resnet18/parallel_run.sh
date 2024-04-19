@@ -38,8 +38,6 @@ if [ $remaining_trials -gt 0 ]; then
 fi
 
 
-echo ${SLURM_STEP_GPUS:-$SLURM_JOB_GPUS}
-
 job_id=$SLURM_JOB_ID
 
 # Use scontrol to get information about the job

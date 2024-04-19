@@ -1,7 +1,10 @@
 #!/bin/bash
 
+total_trials=$1
+num_gpus = $2
+
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:A100:8
+#SBATCH --gres=gpu:A100:$((num_gpus))
 #SBATCH --time=15-00:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
@@ -11,13 +14,10 @@ echo ${SLURM_STEP_GPUS:-$SLURM_JOB_GPUS}
 /data/bcbb/kantipudik2/miniconda3/bin/activate lesion_segmentation
 pg_ctl -D postgres_data start
 
-
-total_trials=$1
-
 echo $total_trials
 
 # Calculate the number of trials per GPU
-trials_per_gpu=$((total_trials / 8))
+trials_per_gpu=$((total_trials / $((num_gpus))))
 
 # Array to store the number of trials for each GPU
 declare -a trials_array
@@ -30,7 +30,7 @@ done
 
 
 # Calculate the remaining trials after evenly distributing them among the GPUs
-remaining_trials=$((total_trials % 8))
+remaining_trials=$((total_trials % $((num_gpus))))
 
 # Assign the remaining trials to the last GPU
 if [ $remaining_trials -gt 0 ]; then

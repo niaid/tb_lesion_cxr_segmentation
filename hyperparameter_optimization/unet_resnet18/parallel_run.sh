@@ -1,17 +1,54 @@
 #!/bin/bash
+
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:A100:8
 #SBATCH --time=15-00:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem-per-cpu=25G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem-per-cpu=20G
+echo ${SLURM_STEP_GPUS:-$SLURM_JOB_GPUS}
+
 /data/bcbb/kantipudik2/miniconda3/bin/activate lesion_segmentation
 pg_ctl -D postgres_data start
-python -m hyperparameter_optimization.unet_resnet18.optuna_resnet_unet hyperparameter_optimization/unet_resnet18/final_configuration.json tbseg_train.csv tbseg_val.csv segment_tb_cxr/unet_resnet18/weights/tbsegg0.pt 13 'postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db' sample_study 0 & 
-python -m hyperparameter_optimization.unet_resnet18.optuna_resnet_unet hyperparameter_optimization/unet_resnet18/final_configuration.json tbseg_train.csv tbseg_val.csv segment_tb_cxr/unet_resnet18/weights/tbsegg1.pt 13 'postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db' sample_study 1 &
-python -m hyperparameter_optimization.unet_resnet18.optuna_resnet_unet hyperparameter_optimization/unet_resnet18/final_configuration.json tbseg_train.csv tbseg_val.csv segment_tb_cxr/unet_resnet18/weights/tbsegg2.pt 13 'postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db' sample_study 2 &
-python -m hyperparameter_optimization.unet_resnet18.optuna_resnet_unet hyperparameter_optimization/unet_resnet18/final_configuration.json tbseg_train.csv tbseg_val.csv segment_tb_cxr/unet_resnet18/weights/tbsegg3.pt 13 'postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db' sample_study 3 &
-python -m hyperparameter_optimization.unet_resnet18.optuna_resnet_unet hyperparameter_optimization/unet_resnet18/final_configuration.json tbseg_train.csv tbseg_val.csv segment_tb_cxr/unet_resnet18/weights/tbsegg4.pt 13 'postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db' sample_study 4 &
-python -m hyperparameter_optimization.unet_resnet18.optuna_resnet_unet hyperparameter_optimization/unet_resnet18/final_configuration.json tbseg_train.csv tbseg_val.csv segment_tb_cxr/unet_resnet18/weights/tbsegg5.pt 13 'postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db' sample_study 5 &
-python -m hyperparameter_optimization.unet_resnet18.optuna_resnet_unet hyperparameter_optimization/unet_resnet18/final_configuration.json tbseg_train.csv tbseg_val.csv segment_tb_cxr/unet_resnet18/weights/tbsegg6.pt 13 'postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db' sample_study 6 &
-python -m hyperparameter_optimization.unet_resnet18.optuna_resnet_unet hyperparameter_optimization/unet_resnet18/final_configuration.json tbseg_train.csv tbseg_val.csv segment_tb_cxr/unet_resnet18/weights/tbsegg7.pt 13 'postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db' sample_study 7 
+
+
+total_trials=$1
+
+echo $total_trials
+
+# Calculate the number of trials per GPU
+trials_per_gpu=$((total_trials / 8))
+
+# Array to store the number of trials for each GPU
+declare -a trials_array
+
+# Assign the same number of trials to each GPU
+for ((i=0; i<num_gpus; i++)); do
+    trials_array[$i]=$trials_per_gpu
+    echo ${trials_array[$i]}
+done
+
+
+# Calculate the remaining trials after evenly distributing them among the GPUs
+remaining_trials=$((total_trials % 8))
+
+# Assign the remaining trials to the last GPU
+if [ $remaining_trials -gt 0 ]; then
+    trials_array[$((num_gpus-1))]=$((trials_per_gpu + remaining_trials))
+fi
+
+
+echo ${SLURM_STEP_GPUS:-$SLURM_JOB_GPUS}
+
+job_id=$SLURM_JOB_ID
+
+# Use scontrol to get information about the job
+gpu_ids=$(scontrol show job $job_id | grep Gres | awk -F= '{print $2}' | awk -F: '{print $2}')
+
+for ((i=0; i<${#gpu_ids[@]}; i++)); do
+    gpu_id=${gpu_ids[$i]}
+    python_script_arg="${trials_array[$i]}"
+    echo ${python_script_arg}
+    echo "Executing python script with $python_script_arg trials on GPU $gpu_id"
+    python -m hyperparameter_optimization.unet_resnet18.optuna_resnet_unet hyperparameter_optimization/unet_resnet18/final_configuration.json sample_train.csv sample_train.csv segment_tb_cxr/unet_resnet18/weights/sample.pt "$python_script_arg" postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db parallel_study "$gpu_id" &
+    done

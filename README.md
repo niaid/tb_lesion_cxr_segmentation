@@ -154,7 +154,7 @@ To initialize the directory for the first time (one time run):
 initdb -D /path/to/postgres/data_directory
 ```
 
-Start the database server in a specific directory:
+Start the database server in the directory initialized:
 ```
 pg_ctl -D /path/to/postgres/data_directory start
 ```
@@ -186,23 +186,24 @@ Exit the terminal:
 \q
 ```
 
-After starting the database, run the optuna parrallel optimization as follows:
+After starting the database, the python command line can be used. However, on a slurm cluster, follow the below instructions for submitting jobs.
 ```
 python -m hyperparameter_optimization.unet_resnet18.optuna_resnet_unet hyperparameter_optimization/unet_resnet18/final_configuration.json tbseg_train.csv tbseg_val.csv segment_tb_cxr/unet_resnet18/weights/output_model_filename 100 'postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db' sample_study 0
 ```
 
 Input arguments for the above command are:
 
-model_info_json_path: optuna configuration listing the variables that are optimized ("rangeand those that have fixed values.
-train_input_csv_path: CSV file containing training files and labels with column names 'processed_Filename' and 'Output_tb_seg_filename' rspectively.
-val_input_csv_path: CSV file containing validation files and labels with column names 'processed_Filename' and 'Output_tb_seg_filename' respectively.
-model_weight_path: Output model weight path to save the weight files with the prefixes provided as the name of the weight file along with the hyperparameter combination in the name.
-num_trial: Number of trials to conduct
-postgres_sql: Postgres sql database link used for storage of results during parallelization.
-study_name: Name of the study.
-gpu_id: GPU device id
+* model_info_json_path: optuna configuration listing the variables that are optimized and those that are not.
+* train_input_csv_path: CSV file containing training files and labels with column names 'processed_Filename' and 'Output_tb_seg_filename' respectively.
+* val_input_csv_path: CSV file containing validation files and labels with column names 'processed_Filename' and 'Output_tb_seg_filename' respectively.
+* model_weight_path: Output model weight path to save the weight files with the prefixes provided as the name of the weight file along with the hyperparameter combination in the name.
+* num_trial: Number of trials to conduct
+* postgres_sql: Postgres sql database link used for storage of results during parallelization.
+* study_name: Name of the study.
+* gpu_id: GPU device id
 
 Outputs:
+
 Generates best loss model weights for each of the hyperparameter set and saves the results in the RDBS database under the study_name.
 
 To submit a slurm job of bash script with one GPU, for running the optimization, refer [single_run.sh](https://github.com/niaid/tb_lesion_cxr_segmentation/tree/main/hyperparameter_optimization/unet_resnet18/single_run.sh)

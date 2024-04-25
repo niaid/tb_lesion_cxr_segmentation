@@ -1,20 +1,22 @@
 #!/bin/bash
 
 total_trials=$1
-num_gpus = $2
 
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:A100:$num_gpus
-#SBATCH --time=15-00:00:00
+#SBATCH --gres=gpu:A100:8 ## No. of gpus
+#SBATCH --time=1-00:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem-per-cpu=20G
+#SBATCH --cpus-per-task=1
+#SBATCH --mem-per-cpu=2G
 
-/data/bcbb/kantipudik2/miniconda3/bin/activate lesion_segmentation
+data/bcbb/kantipudik2/miniconda3/bin/activate lesion_segmentation
 pg_ctl -D postgres_data start
 
-echo $total_trials
+#Checking what GPU ids have been allotted
+echo ${SLURM_STEP_GPUS:-$SLURM_JOB_GPUS}
 
+
+num_gpus=8
 # Calculate the number of trials per GPU
 trials_per_gpu=$((total_trials / num_gpus))
 
@@ -24,7 +26,6 @@ declare -a trials_array
 # Assign the same number of trials to each GPU
 for ((i=0; i<num_gpus; i++)); do
     trials_array[$i]=$trials_per_gpu
-    echo ${trials_array[$i]}
 done
 
 
@@ -39,11 +40,16 @@ fi
 
 job_id=$SLURM_JOB_ID
 
-# Use scontrol to get information about the job
-gpu_ids=$(scontrol show job $job_id | grep Gres | awk -F= '{print $2}' | awk -F: '{print $2}')
+# Get GPU IDs using SLURM environment variables
+echo ${SLURM_STEP_GPUS:-$SLURM_JOB_GPUS}
 
-for ((i=0; i<${#gpu_ids[@]}; i++)); do
-    gpu_id=${gpu_ids[$i]}
+gpu_ids=${SLURM_STEP_GPUS:-$SLURM_JOB_GPUS}
+
+# Split the GPU IDs into an array
+IFS=',' read -ra gpu_ids_array <<< "$gpu_ids"
+
+for ((i=0; i<${#gpu_ids_array[@]}; i++)); do
+    gpu_id=${gpu_ids_array[$i]}
     python_script_arg="${trials_array[$i]}"
     echo ${python_script_arg}
     echo "Executing python script with $python_script_arg trials on GPU $gpu_id"

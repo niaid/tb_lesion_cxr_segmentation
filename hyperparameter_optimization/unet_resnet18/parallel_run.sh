@@ -5,9 +5,9 @@ total_trials=$1
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:A100:8 ## No. of gpus
 #SBATCH --time=1-00:00:00
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=2G
+#SBATCH --ntasks=8
+#SBATCH --cpus-per-task=8
+#SBATCH --mem-per-cpu=10G
 
 data/bcbb/kantipudik2/miniconda3/bin/activate lesion_segmentation
 pg_ctl -D postgres_data start

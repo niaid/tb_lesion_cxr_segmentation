@@ -5,7 +5,7 @@ total_trials=$1
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:A100:8 ## No. of gpus
 #SBATCH --time=1-00:00:00
-#SBATCH --ntasks=8
+#SBATCH --ntasks=8 ## Assign required processes. Otherwise the constraint in resources might cause more time for the process to run.
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=10G
 

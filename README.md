@@ -208,3 +208,29 @@ Generates best loss model weights for each of the hyperparameter set and saves t
 
 To submit a slurm job of bash script with one GPU, for running the optimization, refer [single_run.sh](https://github.com/niaid/tb_lesion_cxr_segmentation/tree/main/hyperparameter_optimization/unet_resnet18/single_run.sh)
 To submit a slurm job of bash script requesting for multiple GPUs, for running the optimization, refer [parallel_run.sh](https://github.com/niaid/tb_lesion_cxr_segmentation/tree/main/hyperparameter_optimization/unet_resnet18/parallel_run.sh)  script.
+
+
+**NOTE:Assigning multiple GPUs to each process within the [parallel_run.sh](https://github.com/niaid/tb_lesion_cxr_segmentation/tree/main/hyperparameter_optimization/unet_resnet18/parallel_run.sh)  script can significantly increase epoch times compared to running each process individually. When running multiple Python scripts independently, it's crucial to ensure that each script utilizes GPUs from the same node. This is especially important because the PostgreSQL database link shared by these scripts requires GPU resources to be located on the same node.
+
+To create and run multiple jobs that contain only one python script but shares the same node in the cluster, run the following script:
+```
+python -m hyperparameter_optimization.unet_resnet18.generate_bash_files_single_runs hyperparameter_optimization/unet_resnet18/final_configuration.json tbseg_train.csv tbseg_val.csv segment_tb_cxr/unet_resnet18/weights/output_model_filename 100 'postgresql://optuna_userv3:optuna_db#2085@localhost/optuna_db' sample_study ai-hpcgpu22 8
+```
+Input arguments for the above command are:
+
+* model_info_json_path: optuna configuration listing the variables that are optimized and those that are not.
+* train_input_csv_path: CSV file containing training files and labels with column names 'processed_Filename' and 'Output_tb_seg_filename' respectively.
+* val_input_csv_path: CSV file containing validation files and labels with column names 'processed_Filename' and 'Output_tb_seg_filename' respectively.
+* model_weight_path: Output model weight path to save the weight files with the prefixes provided as the name of the weight file along with the hyperparameter combination in the name.
+* num_trial: Number of trials to conduct in each of the job
+* postgres_sql: Postgres sql database link used for storage of results during parallelization.
+* node_name: Node name in the cluster
+* num_gpus: Total no. of gpus to be utilzed within that node.
+
+Outputs:
+
+Generates job files and runs those jobs. All the no. of trials are equally distributed across each of the GPUs alooted across each of the jobs. For the last GPU/job, the remaining trials are allocated.
+
+
+Running the above script generates multiple job files (as no. of gpus provided in the argument) containing only one python script running multiple trials for each of the job. This python file also runs each of the jobs that were created as part of the script
+

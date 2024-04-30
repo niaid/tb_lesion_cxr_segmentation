@@ -149,28 +149,19 @@ def main(argv=None):
     parser.add_argument(
         "node_list",
         type=str,
-        help="Node name so that the gpu\
-                                                    for each of the job created\
-                                                    are created within the same node",
+        help="Node name so that the gpu for each of the job created are\
+              created within the same node",
     )
     parser.add_argument(
         "bash_shell_filename_prefix",
         type=str,
-        help="Bash\
-                                                                      shell \
-                                                                     filename\
-                                                                    prefix.The\
-                                                                    filenames\
-                                                                    are saved\
-                                                                    in the\
-                                                                    format of\
-                                         bash_shell_filename_prefix_0.sh etc.",
+        help="Bash shell filename prefix.The filenames are saved in the format\
+                of bash_shell_filename_prefix_0.sh etc.",
     )
     parser.add_argument(
         "num_gpus",
         type=str,
-        help="total no. of gpus to be\
-                                                    allotted within that node",
+        help="total no. of gpus to be allotted within that node",
     )
     args = parser.parse_args()
 

@@ -36,7 +36,8 @@ def generate_bash_files(
                                                and the values corresponding
                                                to each of the keys.
       postgres_sql_database_link(str): Postgres database link to save the
-                                       trial results.
+                                       trial results. Please follow README.md
+                                       on how to create this link.
       trials(int): No. of trials.
       num_gpus(int): Total no. of GPUs that are llocated within a given node.
       study_name(str): Study name to save the study results

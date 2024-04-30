@@ -210,7 +210,7 @@ To submit a slurm job of bash script with one GPU, for running the optimization,
 To submit a slurm job of bash script requesting for multiple GPUs, for running the optimization, refer [parallel_run.sh](https://github.com/niaid/tb_lesion_cxr_segmentation/tree/main/hyperparameter_optimization/unet_resnet18/parallel_run.sh)  script.
 
 
-**NOTE:Assigning multiple GPUs to each process within the [parallel_run.sh](https://github.com/niaid/tb_lesion_cxr_segmentation/tree/main/hyperparameter_optimization/unet_resnet18/parallel_run.sh)  script can significantly increase epoch times compared to running each process individually. When running multiple Python scripts independently, it's crucial to ensure that each script utilizes GPUs from the same node. This is especially important because the PostgreSQL database link shared by these scripts requires GPU resources to be located on the same node.
+**NOTE:Running the [parallel_run.sh](https://github.com/niaid/tb_lesion_cxr_segmentation/tree/main/hyperparameter_optimization/unet_resnet18/parallel_run.sh)  script can significantly increase epoch times compared to running each process individually. When running multiple Python scripts independently, it's crucial to ensure that each script utilizes GPUs from the same node. This is especially important because the PostgreSQL database link shared by these scripts requires GPU resources to be located on the same node.
 
 To create and run multiple jobs that contain only one python script but shares the same node in the cluster, run the following script:
 ```

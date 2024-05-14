@@ -12,7 +12,7 @@
                             "epochs": 2,
                             "prob_rotation": 0.5,
                             "num_crop_samples":4,
-                            "pos":6,   
+                            "pos":2,   
                             "trial_sampler":"tpe"
                                                     
                         },

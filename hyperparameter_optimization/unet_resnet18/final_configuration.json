@@ -12,14 +12,13 @@
                             "epochs": 2,
                             "prob_rotation": 0.5,
                             "num_crop_samples":4,
-                            "pos":6,  
-                            "batch_size": 64,   
+                            "pos":6,   
                             "trial_sampler":"tpe"
                                                     
                         },
     "range_variables":
                         {
-
+                            "batch_size":[8-64],
                             "learning_rate": [1e-5, 1e-2], 
                             "momentum": [0.1,0.99],
                             "neg":[2,8],

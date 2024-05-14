@@ -1,6 +1,6 @@
 import optuna
 import monai
-from segment_tb_cxr.unet_resnet18.training.train_tb_segment import (
+from segment_tb_cxr.hyperparameter_optimization.unet_resnet18.train_tb_segment_from_optuna_hyperparameters import (
     train_model,
     _configure_data_preprocess,
     calculate_validation_loss,

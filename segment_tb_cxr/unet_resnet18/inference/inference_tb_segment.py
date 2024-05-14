@@ -174,8 +174,8 @@ def _predict_mask(file_path, model, device, model_info):
     with torch.no_grad():
         test_data = next(iter(test_loader))
         test_image = test_data["img"].to(device)
-        roi_size = model_info["fixed_variables"]["roi_size"]
-        sw_batch_size = model_info["fixed_variables"]["sw_batch_size"]
+        roi_size = model_info["roi_size"]
+        sw_batch_size = model_info["sw_batch_size"]
         pred_mask = sliding_window_inference(test_image, roi_size, sw_batch_size, model)
         pred = post_trans(decollate_batch(pred_mask)[0])
         pred_mask_0 = np.transpose(pred[0].cpu().numpy(), [1, 0]).astype(np.int32)

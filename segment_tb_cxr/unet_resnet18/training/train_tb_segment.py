@@ -24,7 +24,7 @@ from datetime import timedelta
 import argparse
 import pathlib
 import json
-from segment_tb_cxr.unet_resnet18.training.unet_resnet18 import ResNetUNet
+from segment_tb_cxr_old.training.unet_resnet18 import ResNetUNet
 from torch.utils.tensorboard import SummaryWriter
 
 """
@@ -48,8 +48,8 @@ def calculate_validation_loss(model, model_info, loss_function, val_loader, post
             val_images, val_labels = val_data["img"].to(device), val_data["seg"].to(
                 device
             )
-            roi_size = model_info["fixed_variables"]["roi_size"]
-            sw_batch_size = model_info["fixed_variables"]["sw_batch_size"]
+            roi_size = model_info["roi_size"]
+            sw_batch_size = model_info["sw_batch_size"]
             val_outputs = sliding_window_inference(
                 val_images, roi_size, sw_batch_size, model
             )
@@ -121,32 +121,32 @@ def get_transforms(model_info):
             EnsureChannelFirstd(keys=["img", "seg"]),
             Resized(
                 keys=["img", "seg"],
-                spatial_size=model_info["fixed_variables"]["img_size"],
+                spatial_size=model_info["img_size"],
                 mode=("bilinear", "nearest"),
             ),
-            RepeatChanneld(keys=["img", "seg"], repeats=3),
+            RepeatChanneld(keys=["img", "seg"], repeats=1),
             ScaleIntensityd(keys=["img", "seg"]),
             NormalizeIntensityd(
                 keys=["img"],
-                subtrahend=model_info["fixed_variables"]["means"],
-                divisor=model_info["fixed_variables"]["standard_deviation"],
-                channel_wise=True,
+                subtrahend=model_info["means"],
+                divisor=model_info["standard_deviation"],
+                channel_wise=False,
             ),
             RandCropByPosNegLabeld(
                 keys=["img", "seg"],
                 label_key="seg",
-                spatial_size=model_info["fixed_variables"]["spatial_size"],
-                pos=model_info["fixed_variables"]["pos"],
-                neg=model_info["range_variables"]["neg"],
-                num_samples=model_info["fixed_variables"]["num_crop_samples"],
+                spatial_size=model_info["spatial_size"],
+                pos=model_info["pos"],
+                neg=model_info["neg"],
+                num_samples=model_info["num_crop_samples"],
             ),
             RandRotated(
                 keys=["img", "seg"],
                 range_x=(
-                    np.deg2rad(-model_info["range_variables"]["rotation_degree"]),
-                    np.deg2rad(model_info["range_variables"]["rotation_degree"]),
+                    np.deg2rad(-model_info["rotation_degree"]),
+                    np.deg2rad(model_info["rotation_degree"]),
                 ),
-                prob=model_info["fixed_variables"]["prob_rotation"],
+                prob=model_info["prob_rotation"],
                 mode=("bilinear", "nearest"),
             ),
         ]
@@ -158,16 +158,16 @@ def get_transforms(model_info):
             EnsureChannelFirstd(keys=["img", "seg"]),
             Resized(
                 keys=["img", "seg"],
-                spatial_size=model_info["fixed_variables"]["img_size"],
+                spatial_size=model_info["img_size"],
                 mode=("bilinear", "nearest"),
             ),
-            RepeatChanneld(keys=["img", "seg"], repeats=3),
+            RepeatChanneld(keys=["img", "seg"], repeats=1),
             ScaleIntensityd(keys=["img", "seg"]),
             NormalizeIntensityd(
                 keys=["img"],
-                subtrahend=model_info["fixed_variables"]["means"],
-                divisor=model_info["fixed_variables"]["standard_deviation"],
-                channel_wise=True,
+                subtrahend=model_info["means"],
+                divisor=model_info["standard_deviation"],
+                channel_wise=False,
             ),
         ]
     )
@@ -178,15 +178,15 @@ def get_transforms(model_info):
             EnsureChannelFirstd(keys=["img"]),
             Resized(
                 keys=["img"],
-                spatial_size=model_info["fixed_variables"]["img_size"],
+                spatial_size=model_info["img_size"],
                 mode=("bilinear"),
             ),
             RepeatChanneld(keys=["img"], repeats=3),
             ScaleIntensityd(keys=["img"]),
             NormalizeIntensityd(
                 keys=["img"],
-                subtrahend=model_info["fixed_variables"]["means"],
-                divisor=model_info["fixed_variables"]["standard_deviation"],
+                subtrahend=model_info["means"],
+                divisor=model_info["standard_deviation"],
                 channel_wise=True,
             ),
         ]
@@ -231,7 +231,8 @@ def _configure_data_preprocess(train_csv_path, val_csv_path, model_info):
             "seg": ref_file,
         }
         for cxr_file, ref_file in zip(
-            train_files["processed_Filename"], train_files["Output_tb_seg_filename"]
+            train_files["processed_two_channeled_Filename"],
+            train_files["Output_tb_seg_filename"],
         )
     ]
     val_files = [
@@ -240,7 +241,8 @@ def _configure_data_preprocess(train_csv_path, val_csv_path, model_info):
             "seg": ref_file,
         }
         for cxr_file, ref_file in zip(
-            val_files["processed_Filename"], val_files["Output_tb_seg_filename"]
+            val_files["processed_two_channeled_Filename"],
+            val_files["Output_tb_seg_filename"],
         )
     ]
 
@@ -253,9 +255,9 @@ def _configure_data_preprocess(train_csv_path, val_csv_path, model_info):
     # generate batch_size x 4 images for network training
     train_loader = DataLoader(
         train_ds,
-        batch_size=model_info["fixed_variables"]["batch_size"],
+        batch_size=model_info["batch_size"],
         shuffle=True,
-        num_workers=model_info["fixed_variables"]["num_workers"],
+        num_workers=model_info["num_workers"],
         collate_fn=custom_train_collate_batch,
         pin_memory=torch.cuda.is_available(),
     )
@@ -264,8 +266,8 @@ def _configure_data_preprocess(train_csv_path, val_csv_path, model_info):
     val_ds = monai.data.SmartCacheDataset(data=val_files, transform=val_transforms)
     val_loader = DataLoader(
         val_ds,
-        batch_size=model_info["fixed_variables"]["batch_size"],
-        num_workers=model_info["fixed_variables"]["num_workers"],
+        batch_size=model_info["batch_size"],
+        num_workers=model_info["num_workers"],
         collate_fn=custom_val_collate_batch,
         pin_memory=torch.cuda.is_available(),
     )
@@ -277,7 +279,6 @@ def train_model(
     train_loader,
     val_loader,
     model_info,
-    device_id,
     output_model_filename,
     plot_images_for_debugging=True,
 ):
@@ -299,36 +300,28 @@ def train_model(
     """
     device = torch.device("cuda")
 
-    model = ResNetUNet(3).to(device)  # Input takes 3 channels encoder is initialized
+    model = ResNetUNet(1).to(device)  # Input takes 3 channels encoder is initialized
     # with 'imagenet' weights.
 
     post_trans = Compose(
         [
             EnsureType(),
             Activations(sigmoid=True),
-            AsDiscrete(logit_thresh=model_info["fixed_variables"]["threshold"]),
+            AsDiscrete(logit_thresh=model_info["threshold"]),
         ]
     )
 
     loss_function = monai.losses.DiceFocalLoss(sigmoid=True)
-    if model_info["categorical_variables"]["optimizer"] == "Adam":
-        optimizer = torch.optim.Adam(
-            model.parameters(), lr=model_info["range_variables"]["learning_rate"]
-        )
-    else:
-        optimizer = torch.optim.SGD(
-            model.parameters(),
-            lr=model_info["range_variables"]["learning_rate"],
-            momentum=model_info["range_variables"]["momentum"],
-        )
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=model_info["learning_rate"])
 
     writer = SummaryWriter(comment=output_model_filename.split("/")[-1].split(".pt")[0])
 
     val_interval = 1
-    epochs = model_info["fixed_variables"]["epochs"]
+    epochs = model_info["epochs"]
     best_val_loss = float("inf")
 
-    for epoch in range(model_info["fixed_variables"]["epochs"]):
+    for epoch in range(model_info["epochs"]):
         t1 = time.time()
         print("-" * 10)
         print(f"epoch {epoch + 1}/" + str(epochs))
@@ -363,11 +356,14 @@ def train_model(
             if val_epoch_loss < best_val_loss:
                 best_val_loss = val_epoch_loss
                 best_val_loss_epoch = epoch + 1
+
+                # Save the model weights along with the hyperparameters.
                 torch.jit.save(
                     torch.jit.script(model),
                     output_model_filename.split(".pt")[0] + "_loss.pt",
                 )
-                print("saved new best val loss model")
+
+                print("saved new best val loss model weights.")
 
             print(
                 "current epoch: {} current val loss: {:.4f} \
@@ -454,7 +450,7 @@ def main(argv=None):
         val_loader=val_loader,
         model_info=model_info,
         output_model_filename=args.output_model_filename,
-        plot_images_for_debugging=args.plot_images_ffor_debugging,
+        plot_images_for_debugging=args.plot_images_for_debugging,
     )
 
 

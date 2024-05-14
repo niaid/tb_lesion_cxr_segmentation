@@ -376,7 +376,21 @@ def train_model(
                     torch.jit.script(model),
                     output_model_filename.split(".pt")[0] + "_loss.pt",
                 )
-                print("saved new best val loss model")
+
+                json_filename = output_model_filename.split(".pt")[0] + "_loss.json"
+
+                json_dict = dict(model_info["fixed_variables"])
+
+                json_dict = json_dict.update(model_info["range_variables"]).update(
+                    model_info["categorical_variables"]
+                )
+
+                with open(json_filename, "w+") as f:
+                    json.dump(json_dict, f)
+
+                print(
+                    "saved new best val loss model weights and best hyperparameter json file."
+                )
 
             print(
                 "current epoch: {} current val loss: {:.4f} \

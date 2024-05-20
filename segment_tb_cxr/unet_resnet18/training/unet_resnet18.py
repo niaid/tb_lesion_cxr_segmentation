@@ -7,13 +7,11 @@ This network has been taken from https://github.com/usuyama/pytorch-unet.
 It is under MIT License and Copyright (c) 2018 Naoto Usuyama.
 """
 
-
 def convrelu(in_channels, out_channels, kernel, padding):
     return nn.Sequential(
         nn.Conv3d(in_channels, out_channels, kernel, padding=padding),
         nn.ReLU(inplace=True),
     )
-
 
 class ResNetUNet(nn.Module):
     def __init__(self, n_class):
@@ -32,9 +30,9 @@ class ResNetUNet(nn.Module):
         self.layer1 = nn.Sequential(*self.base_layers[3:5])
         self.layer1_1x1 = convrelu(64, 64, (1, 1, 1), (0, 0, 0))
         self.layer2 = self.base_layers[5]
-        self.layer2_1x1 = convrelu(128, 128, (1, 1, 1), (0, 0, 0))  # Modified line
+        self.layer2_1x1 = convrelu(128, 128, (1, 1, 1), (0, 0, 0))
         self.layer3 = self.base_layers[6]
-        self.layer3_1x1 = convrelu(256, 256, (1, 1, 1), (0, 0, 0))  # Modified line
+        self.layer3_1x1 = convrelu(256, 256, (1, 1, 1), (0, 0, 0))
         self.layer4 = self.base_layers[7]
         self.layer4_1x1 = convrelu(512, 512, (1, 1, 1), (0, 0, 0))
 
@@ -53,6 +51,7 @@ class ResNetUNet(nn.Module):
         self.conv_last = nn.Conv3d(64, n_class, (1, 1, 1))
 
     def forward(self, input):
+        # Adjust the permute step if necessary for the specific input shape
         input = input.permute(0, 1, 4, 3, 2)
 
         x_original = self.conv_original_size0(input)

@@ -181,7 +181,7 @@ def get_transforms(model_info):
                 spatial_size=model_info["img_size"],
                 mode=("bilinear"),
             ),
-            RepeatChanneld(keys=["img"], repeats=3),
+            RepeatChanneld(keys=["img"], repeats=1),
             ScaleIntensityd(keys=["img"]),
             NormalizeIntensityd(
                 keys=["img"],

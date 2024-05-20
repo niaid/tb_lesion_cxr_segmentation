@@ -5,12 +5,12 @@ channels:
 dependencies:
   - postgresql
   - pip:
-      - simpleitk=2.0.0
-      - pandas=0.25.3
+      - simpleitk
+      - pandas
       - scikit-learn
       - pydicom
       - monai
-      - numpy=1.23.1
+      - numpy
       - ultralytics
       - nnunetv2
       - optuna

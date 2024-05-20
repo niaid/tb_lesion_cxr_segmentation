@@ -13,7 +13,7 @@ def objective(trial, train_csv_path, val_csv_path, model_info):
     }
 
     for key in model_info["range_variables"].keys():
-        if type(model_info["range_variables"][key][0]) == int:
+        if isinstance(model_info["range_variables"][key][0], int):
             trial_model_info["range_variables"][key] = trial.suggest_int(
                 key,
                 model_info["range_variables"][key][0],

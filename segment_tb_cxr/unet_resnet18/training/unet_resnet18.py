@@ -7,11 +7,13 @@ This network has been taken from https://github.com/usuyama/pytorch-unet.
 It is under MIT License and Copyright (c) 2018 Naoto Usuyama.
 """
 
+
 def convrelu(in_channels, out_channels, kernel, padding):
     return nn.Sequential(
         nn.Conv3d(in_channels, out_channels, kernel, padding=padding),
         nn.ReLU(inplace=True),
     )
+
 
 class ResNetUNet(nn.Module):
     def __init__(self, n_class):

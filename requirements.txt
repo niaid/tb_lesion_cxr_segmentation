@@ -1,5 +1,0 @@
-SimpleITK==2.2.1
-torch==2.0.1
-monai==1.2.0
-torchvision==0.15.2
-pandas==2.0.3

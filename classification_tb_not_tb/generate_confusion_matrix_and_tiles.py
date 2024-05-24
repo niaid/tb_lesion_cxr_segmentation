@@ -24,6 +24,7 @@ def plot_confusion_matrix(pred_labels, ref_labels, output_confusion_matrix_filen
 
     plt.xlabel("Predicted")
     plt.ylabel("True")
+    plt.tight_layout()
     plt.savefig(output_confusion_matrix_filename)
 
 

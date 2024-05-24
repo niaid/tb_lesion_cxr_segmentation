@@ -46,7 +46,7 @@ def generate_segmentations(df, weights, output_dir):
 
         output_pred_file = os.path.join(
             output_dir,
-            os.path.splitext(os.path.basename(img_path))[0] + "_pred_seg.png",
+            os.path.splitext(os.path.basename(img_path))[0] + "_pred_seg.nrrd",
         )
         if results[0].masks is not None:
             im_array = results[0].masks.data.cpu().numpy()
@@ -81,7 +81,7 @@ def generate_segmentations(df, weights, output_dir):
                 sitk.Image(original_img.GetSize(), sitk.sitkUInt8),
                 os.path.join(
                     output_dir,
-                    os.path.splitext(os.path.basename(img_path))[0] + "_pred_seg.png",
+                    os.path.splitext(os.path.basename(img_path))[0] + "_pred_seg.nrrd",
                 ),
             )
 
@@ -108,7 +108,7 @@ def main():
     generate_segmentations(df, args.weights, args.output_dir)
 
     df["pred_tb_seg_file"] = df["processed_Filename"].apply(
-        lambda x: os.path.splitext(os.path.basename(x))[0] + "_pred_seg.png"
+        lambda x: os.path.splitext(os.path.basename(x))[0] + "_pred_seg.nrrd"
     )
     df.to_csv(args.output_csv_filename, index=False)
 

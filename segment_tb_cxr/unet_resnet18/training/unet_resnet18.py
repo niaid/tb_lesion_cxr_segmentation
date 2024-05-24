@@ -19,7 +19,7 @@ class ResNetUNet(nn.Module):
     def __init__(self, n_class):
         super().__init__()
 
-        self.base_model = torchvision.models.resnet18(pretrained=True)
+        self.base_model = torchvision.models.resnet18(pretrained=False)
         self.base_layers = list(self.base_model.children())
 
         # Change input channels of the first convolution layer

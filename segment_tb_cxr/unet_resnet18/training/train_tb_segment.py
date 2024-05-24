@@ -24,7 +24,6 @@ from datetime import timedelta
 import argparse
 import pathlib
 import json
-from segment_tb_cxr_old.training.unet_resnet18 import ResNetUNet
 from torch.utils.tensorboard import SummaryWriter
 
 """
@@ -300,7 +299,14 @@ def train_model(
     """
     device = torch.device("cuda")
 
-    model = ResNetUNet(1).to(device)  # Input takes 3 channels encoder is initialized
+    model = monai.networks.nets.AttentionUnet(
+        spatial_dims=3,
+        in_channels=1,
+        out_channels=1,
+        channels=(2, 32, 64, 128, 256),
+        strides=(2, 2, 2, 2),
+    ).to(device)
+    # model = ResNetUNet(1).to(device)  # Input takes 3 channels encoder is initialized
     # with 'imagenet' weights.
 
     post_trans = Compose(

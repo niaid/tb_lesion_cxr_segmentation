@@ -20,10 +20,10 @@ def plot_confusion_matrix(pred_labels, ref_labels, output_confusion_matrix_filen
     cm = confusion_matrix(ref_labels, pred_labels)
 
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["NOT_TB", "TB"])
-    disp.plot(cmap=plt.cm.Blues)
+    disp.plot(cmap=plt.cm.Blues, colorbar=False)
 
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
+    plt.xlabel("Predicted labels")
+    plt.ylabel("Reference labels")
     plt.tight_layout()
     plt.savefig(output_confusion_matrix_filename)
 
@@ -56,9 +56,6 @@ def generate_tb_masks_within_lungs(
     predicted_lung_mask.SetSpacing(predicted_tb_segmentation.GetSpacing())
     predicted_tb_segmentation = sitk.Cast(predicted_tb_segmentation, sitk.sitkUInt8)
 
-    tb_seg = sitk.GetArrayFromImage(predicted_tb_segmentation)
-    lung_mask = sitk.GetArrayFromImage(predicted_lung_mask)
-    print(original_img_path, tb_seg.max(), lung_mask.max())
     # Filter tb masks within lungs
     filtered_tb_mask_within_lungs = predicted_lung_mask * predicted_tb_segmentation
 
@@ -238,7 +235,6 @@ def plot_tile_volume(images, output_tile_filename):
     cols = math.ceil(math.sqrt(len(images)))
     rows = math.ceil(len(images) / cols)
 
-    print(rows, cols)
     faux_volume_image_files, image_file_list = visualize_files(
         images,
         imageIO="",
@@ -246,8 +242,6 @@ def plot_tile_volume(images, output_tile_filename):
         thumbnail_size=[64, 64],
         tile_size=[rows, cols],
     )
-    len(image_file_list)
-    print(faux_volume_image_files.GetSize())
     array = sitk.GetArrayFromImage(faux_volume_image_files)
     plt.imshow(array[0], cmap="gray")
     plt.axis("off")
@@ -316,14 +310,12 @@ def main(argv=None):
         args.output_confusion_matrix_filename,
     )
 
+    # Plot the ones which have reference labels as "TB" but predicted as "NOT_TB"
     plot_tile_volume(
-        df[df["TB_NOT_TB"] == "TB"]["processed_Filename"].tolist(),
+        df[(df["TB_NOT_TB"] == "NOT_TB") & (df["predicted_TB_NOT_TB"] == "TB")][
+            "processed_Filename"
+        ].tolist(),
         args.output_csv_filename.split(".csv")[0] + "_TB_tile.png",
-    )
-
-    plot_tile_volume(
-        df[df["TB_NOT_TB"] == "NOT_TB"]["processed_Filename"].tolist(),
-        args.output_csv_filename.split(".csv")[0] + "_NOTTB_tile.png",
     )
 
 

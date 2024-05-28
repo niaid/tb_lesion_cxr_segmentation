@@ -1,4 +1,7 @@
+import os
+import glob
 import json
+import numpy as np
 import pandas as pd
 import SimpleITK as sitk
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
@@ -15,6 +18,16 @@ from functools import partial
 
 
 def plot_confusion_matrix(pred_labels, ref_labels, output_confusion_matrix_filename):
+    """
+    Plot the confusion matrix using the repdicted labels and the reference labels.
+
+    Inputs:
+        pred_labels(list): Predicted labels
+        ref_labels(list): Reference labels
+        output_confusion_matrix_filename(str): Output confusion matrix filename.
+    Outputs:
+        ---
+    """
 
     # Compute confusion matrix
     cm = confusion_matrix(ref_labels, pred_labels)
@@ -29,7 +42,16 @@ def plot_confusion_matrix(pred_labels, ref_labels, output_confusion_matrix_filen
 
 
 def get_pred_label(filtered_tb_mask_within_lungs, threshold=1):
-
+    """
+    Return the predicted label if the lung regions contains atleast min. threshold \
+    pixels of segmented tb.
+    Inputs:
+        filtered_tb_mask_within_lungs(sitk.Image): SimpleITK image with intensection
+                                                     of lung regions and the tb segmented regions.
+        threshold(int): Minimum pixels to qualify a given image contains "TB" or not.
+    Outputs:
+        "TB"/"NOT_TB": Preodcted label.
+    """
     if sum(sitk.GetArrayFromImage(filtered_tb_mask_within_lungs)) >= threshold:
         return "TB"
     else:
@@ -43,9 +65,23 @@ def generate_tb_masks_within_lungs(
     device,
     model_info,
 ):
-
+    """
+    Generate tb masks within lungs. Using the lung segmentation model, predict
+    the lung segmentation masks and then generate the intersection of tb generated
+    regions and the lung segmented masks.
+    Inputs:
+        original_img_path(string): Path for the image.
+        predicted_segmentation_path(string ): Path for the predicted segmentation file.
+        lung_segmentation_model(torch.nn.Module): loaded torch lung segmentation model.
+        device(torch.Device): torch device. CUDA enabled GPU or cpu
+        model_info(dict): Model dictionary for lung segmentation model to use the trained
+                          lung segmentation model information to preprocess.
+    Outputs:
+        filtered_tb_mask_within_lungs(sitk.Image): SimpleITK image with intensection
+                                                     of lung regions and the tb segmented regions.
+    """
     predicted_tb_segmentation = _read_image(predicted_segmentation_path)
-
+    lung_segmentation_model
     predicted_lung_mask = _predict_mask(
         original_img_path,
         lung_segmentation_model,
@@ -69,7 +105,20 @@ def get_pred_labels(
     model_info,
     threshold=1,
 ):
-
+    """
+    Generate predicted "TB"/"NOT_TB" labels using the lung segmentation model and
+    the predicted tb segmentation file.
+    Inputs:
+        original_img_paths(list): Path for the original image paths.
+        predicted_segmentation_paths(list): List of predicted segmentation paths.
+        lung_segmentation_model(torch.nn.Module): loaded torch lung segmentation model.
+        device(torch.Device): torch device. CUDA enabled GPU or cpu
+        model_info(dict): Model dictionary for lung segmentation model to use the trained
+                          lung segmentation model information to preprocess.
+        threshold(int): Minimum pixels to qualify a given image contains "TB" or not.
+    Outputs:
+        pred_tb_labels(list): List of predicted "TB"/"NOT_TB" labels
+    """
     pred_tb_labels = []
     model, device = _load_model(lung_segmentation_model_path)
     for original_img_path, predicted_segmentation_path in zip(
@@ -129,12 +178,11 @@ def process_image(img, projection_axis, thumbnail_size):
 def visualize_single_file(file_name, imageIO, projection_axis, thumbnail_size):
     image_file_name = ""
     image = None
-    try:
-        img = _read_image(file_name)
-        image = process_image(img, projection_axis, thumbnail_size)
-        image_file_name = file_name
-    except:  # noqa:E722
-        pass
+
+    img = sitk.ReadImage(file_name)
+    image = process_image(img, projection_axis, thumbnail_size)
+    image_file_name = file_name
+
     return (image_file_name, image)
 
 
@@ -234,18 +282,98 @@ def create_tile_volume(images, tile_size):
 def plot_tile_volume(images, output_tile_filename):
     cols = math.ceil(math.sqrt(len(images)))
     rows = math.ceil(len(images) / cols)
-
     faux_volume_image_files, image_file_list = visualize_files(
         images,
         imageIO="",
         projection_axis=2,
-        thumbnail_size=[64, 64],
+        thumbnail_size=[128, 128],
         tile_size=[rows, cols],
     )
     array = sitk.GetArrayFromImage(faux_volume_image_files)
-    plt.imshow(array[0], cmap="gray")
+    plt.imshow(array[0])
     plt.axis("off")
+    plt.tight_layout()
     plt.savefig(output_tile_filename)
+    plt.clf()
+
+
+def write_overlayed_images(ref_not_tb_pred_tb_dir, img_file, pred_file):
+
+    image = sitk.Cast(sitk.RescaleIntensity(_read_image(img_file)), sitk.sitkUInt8)
+    image_array = sitk.GetArrayFromImage(image)
+
+    # Load and resize mask to match original image shape
+    mask = _read_image(pred_file)
+    # mask_resized = sitk.Resample(mask, image.GetSize(), sitk.Transform(), sitk.sitkNearestNeighbor)
+    mask_array = sitk.GetArrayFromImage(mask)
+
+    # Overlay mask on image using red color
+    overlaid_image = np.stack([image_array] * 3, axis=-1)  # Convert to RGB
+    overlaid_image[mask_array == 1] = [
+        255,
+        0,
+        0,
+    ]  # Set color to red where mask is present
+
+    plt.imsave(
+        os.path.join(ref_not_tb_pred_tb_dir, img_file.split("/")[-1]) + ".png",
+        overlaid_image.astype(np.uint8),
+    )
+
+
+def plot_fn_fp_tiles(
+    df,
+    output_dir_to_save_overlayed_fn_images,
+    output_dir_to_save_overlayed_fp_images,
+    output_csv_filename,
+):
+
+    if not os.path.isdir(output_dir_to_save_overlayed_fn_images):
+        os.makedirs(output_dir_to_save_overlayed_fn_images)
+
+    if not os.path.isdir(output_dir_to_save_overlayed_fp_images):
+        os.makedirs(output_dir_to_save_overlayed_fp_images)
+
+    # Save overlayed false positive files
+    ref_not_tb_pred_tb = df[
+        (df["TB_NOT_TB"] == "NOT_TB") & (df["predicted_TB_NOT_TB"] == "TB")
+    ]
+    with mp.Pool(30) as p:
+        func = partial(write_overlayed_images, output_dir_to_save_overlayed_fp_images)
+        p.starmap(
+            func,
+            zip(
+                ref_not_tb_pred_tb["processed_Filename"].tolist(),
+                ref_not_tb_pred_tb["pred_tb_seg_file"].tolist(),
+            ),
+        )
+
+    files = glob.glob(os.path.join(output_dir_to_save_overlayed_fp_images, "*"))
+
+    plot_tile_volume(
+        files,
+        output_csv_filename.split(".csv")[0] + "_fp_tile.png",
+    )
+
+    ref_tb_pred_not_tb = df[
+        (df["TB_NOT_TB"] == "TB") & (df["predicted_TB_NOT_TB"] == "NOT_TB")
+    ]
+    with mp.Pool(30) as p:
+        func = partial(write_overlayed_images, output_dir_to_save_overlayed_fn_images)
+        p.starmap(
+            func,
+            zip(
+                ref_tb_pred_not_tb["processed_Filename"].tolist(),
+                ref_tb_pred_not_tb["pred_tb_seg_file"].tolist(),
+            ),
+        )
+
+    files = glob.glob(os.path.join(output_dir_to_save_overlayed_fn_images, "*"))
+
+    plot_tile_volume(
+        files,
+        output_csv_filename.split(".csv")[0] + "_fn_tile.png",
+    )
 
 
 def main(argv=None):
@@ -288,6 +416,16 @@ def main(argv=None):
         type=str,
         help="Filename for the output confusion matrix",
     )
+    parser.add_argument(
+        "output_dir_to_save_fn_overlayed_images",
+        type=str,
+        help="Output directory to save overlayed images",
+    )
+    parser.add_argument(
+        "output_dir_to_save_fp_overlayed_images",
+        type=str,
+        help="Output directory to save overlayed images",
+    )
     args = parser.parse_args()
 
     with open(str(args.lung_segmentation_model_info_json_path)) as f:
@@ -304,18 +442,18 @@ def main(argv=None):
     )
 
     df.to_csv(args.output_csv_filename, index=False)
+
     plot_confusion_matrix(
         df["predicted_TB_NOT_TB"].tolist(),
         df["TB_NOT_TB"].tolist(),
         args.output_confusion_matrix_filename,
     )
 
-    # Plot the ones which have reference labels as "TB" but predicted as "NOT_TB"
-    plot_tile_volume(
-        df[(df["TB_NOT_TB"] == "NOT_TB") & (df["predicted_TB_NOT_TB"] == "TB")][
-            "processed_Filename"
-        ].tolist(),
-        args.output_csv_filename.split(".csv")[0] + "_TB_tile.png",
+    plot_fn_fp_tiles(
+        df,
+        args.output_dir_to_save_overlayed_fn_images,
+        args.output_dir_to_save_overlayed_fp_images,
+        args.output_csv_filename,
     )
 
 

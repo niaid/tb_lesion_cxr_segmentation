@@ -9,7 +9,7 @@
     "batch_size": 64, 
     "num_workers": 4, 
     "learning_rate": 0.001, 
-    "epochs": 500,
+    "epochs": 400,
     "num_crop_samples":4,
     "pos":2,
     "neg":1,

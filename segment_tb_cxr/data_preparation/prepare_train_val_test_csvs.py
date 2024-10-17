@@ -3,7 +3,6 @@ import pandas as pd
 from sklearn.model_selection import KFold
 
 
-
 def split_train_val_test(df, train_percentage=0.7, val_percentage=0.15):
     """
 
@@ -19,40 +18,47 @@ def split_train_val_test(df, train_percentage=0.7, val_percentage=0.15):
         df(pd.DataFrame): pandas dataframe containing the columns 'processed_Filename',
                           'Output_tb_seg_filename' and 'PatientID'
     Returns:
-         train_df[pd.DataFrame]: training set with the same columns as the input dataframe.
-         val_df[pd.DataFrame]: validation set with the same columns as the input dataframe.
-         test_df[pd.DataFrame]: testing set with the same columns as the input dataframe.
+          train_df[pd.DataFrame]: training set with the same columns as the input dataframe.
+          val_df[pd.DataFrame]: validation set with the same columns as the input dataframe.
+          test_df[pd.DataFrame]: testing set with the same columns as the input dataframe.
     """
 
     # Number of splits
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
+
+    train_folds = []
+    val_folds = []
+    test_folds = []
     # Iterate over each fold
     for fold, (train_val_idx, test_idx) in enumerate(kf.split(df), 1):
         # Create train/val and test splits
         train_val_df = df.iloc[train_val_idx]
         test_df = df.iloc[test_idx]
-    
+
         # Calculate sizes for training and validation sets
         train_size = round(len(df) * 0.7)  # 70% of full dataset
-        val_size = round(len(df) * 0.15)   # 15% of full dataset
-    
+        val_size = round(len(df) * 0.15)  # 15% of full dataset
+
         # Split train_val_df into training and validation sets
-        train_df = train_val_df[:train_size] # noqa:E203
-        val_df = train_val_df[train_size:train_size + val_size] # noqa:E203
-   
+        train_df = train_val_df[:train_size]  # noqa:E203
+        val_df = train_val_df[train_size : train_size + val_size]  # noqa:E203
+
         # Ensure that each set contains non-overlapping patient IDs
         train_patient_ids = set(train_df["PatientID"])
         valid_patient_ids = set(val_df["PatientID"])
-    
+
         # Remove patient IDs from validation set that appear in the training set.
         val_df = val_df[~val_df["PatientID"].isin(train_patient_ids)]
-    
+
         # Remove patient IDs from test set that appear in the training set and validation set.
         test_df = test_df[
             ~test_df["PatientID"].isin(train_patient_ids.union(valid_patient_ids))
         ]
 
-    return train_df, val_df, test_df
+        train_folds.append(train_df)
+        val_folds.append(val_df)
+        test_folds.append(test_df)
+    return train_folds, val_folds, test_folds
 
 
 def main():
@@ -87,13 +93,23 @@ def main():
 
     df = pd.read_csv(args.input_csv_path)
 
-    train_df, val_df, test_df = split_train_val_test(
-        df, train_ratio=args.train_ratio, val_ratio=args.val_ratio
+    train_folds, val_folds, test_folds = split_train_val_test(
+        df, train_percentage=args.train_ratio, val_percentage=args.val_ratio
     )
 
-    train_df.to_csv(args.output_prefix_for_csv_filename + "_train.csv", index=False)
-    val_df.to_csv(args.output_prefix_for_csv_filename + "_val.csv", index=False)
-    test_df.to_csv(args.output_prefix_for_csv_filename + "_test.csv", index=False)
+    for fold in range(5):
+        train_folds[fold].to_csv(
+            args.output_prefix_for_csv_filename + "_fold_" + str(fold) + "_train.csv",
+            index=False,
+        )
+        val_folds[fold].to_csv(
+            args.output_prefix_for_csv_filename + "_fold_" + str(fold) + "_val.csv",
+            index=False,
+        )
+        test_folds[fold].to_csv(
+            args.output_prefix_for_csv_filename + "_fold_" + str(fold) + "_test.csv",
+            index=False,
+        )
 
 
 if __name__ == "__main__":

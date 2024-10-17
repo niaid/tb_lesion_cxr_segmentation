@@ -1,5 +1,7 @@
 import argparse
 import pandas as pd
+from sklearn.model_selection import KFold
+
 
 
 def split_train_val_test(df, train_percentage=0.7, val_percentage=0.15):
@@ -22,25 +24,33 @@ def split_train_val_test(df, train_percentage=0.7, val_percentage=0.15):
          test_df[pd.DataFrame]: testing set with the same columns as the input dataframe.
     """
 
-    train_size = round(len(df) * 0.7)
-    val_size = round(len(df) * 0.15)
-
-    # Split the DataFrame
-    train_df = df[:train_size]
-    val_df = df[train_size : train_size + val_size]  # noqa:E203
-    test_df = df[train_size + val_size :]  # noqa:E203
-
-    # Ensure that each set contains non-overlapping patient IDs
-    train_patient_ids = set(train_df["PatientID"])
-    valid_patient_ids = set(val_df["PatientID"])
-
-    # Remove patient IDs from validation set that appear in the training set.
-    val_df = val_df[~val_df["PatientID"].isin(train_patient_ids)]
-
-    # Remove patient IDs from test set that appear in the training set and validation set.
-    test_df = test_df[
-        ~test_df["PatientID"].isin(train_patient_ids.union(valid_patient_ids))
-    ]
+    # Number of splits
+    kf = KFold(n_splits=5, shuffle=True, random_state=42)
+    # Iterate over each fold
+    for fold, (train_val_idx, test_idx) in enumerate(kf.split(df), 1):
+        # Create train/val and test splits
+        train_val_df = df.iloc[train_val_idx]
+        test_df = df.iloc[test_idx]
+    
+        # Calculate sizes for training and validation sets
+        train_size = round(len(df) * 0.7)  # 70% of full dataset
+        val_size = round(len(df) * 0.15)   # 15% of full dataset
+    
+        # Split train_val_df into training and validation sets
+        train_df = train_val_df[:train_size] # noqa:E203
+        val_df = train_val_df[train_size:train_size + val_size] # noqa:E203
+   
+        # Ensure that each set contains non-overlapping patient IDs
+        train_patient_ids = set(train_df["PatientID"])
+        valid_patient_ids = set(val_df["PatientID"])
+    
+        # Remove patient IDs from validation set that appear in the training set.
+        val_df = val_df[~val_df["PatientID"].isin(train_patient_ids)]
+    
+        # Remove patient IDs from test set that appear in the training set and validation set.
+        test_df = test_df[
+            ~test_df["PatientID"].isin(train_patient_ids.union(valid_patient_ids))
+        ]
 
     return train_df, val_df, test_df
 

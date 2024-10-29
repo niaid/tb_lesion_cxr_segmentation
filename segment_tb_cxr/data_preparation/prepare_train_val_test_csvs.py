@@ -10,7 +10,7 @@ def split_train_val_test(df, train_percentage=0.7, val_percentage=0.15):
     provided train/val/test ratios. The input dataframe must contain the
     columns 'processed_Filename', 'Output_tb_seg_filename' and 'PatientID'
     so as to make sure that the input train/val/test
-    datframes does not contain the overlapping PatientIDs.
+    dataframes does not contain the overlapping PatientIDs.
 
     ''
 
@@ -18,9 +18,9 @@ def split_train_val_test(df, train_percentage=0.7, val_percentage=0.15):
         df(pd.DataFrame): pandas dataframe containing the columns 'processed_Filename',
                           'Output_tb_seg_filename' and 'PatientID'
     Returns:
-          train_df[pd.DataFrame]: training set with the same columns as the input dataframe.
-          val_df[pd.DataFrame]: validation set with the same columns as the input dataframe.
-          test_df[pd.DataFrame]: testing set with the same columns as the input dataframe.
+          train_fodls[list of pd.DataFrame]: list of training sets with the same columns as the input dataframe.
+          val_df[list of pd.DataFrame]: list of validation sets with the same columns as the input dataframe.
+          test_df[list of pd.DataFrame]: list of testing sets with the same columns as the input dataframe.
     """
 
     # Number of splits

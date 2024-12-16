@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.model_selection import KFold
 
 
-def split_train_val_test(df,num_folds=5, train_percentage=0.7, val_percentage=0.15):
+def split_train_val_test(df, num_folds=5, train_percentage=0.7, val_percentage=0.15):
     """
 
     This function generates train/val and test dataframes with the user
@@ -99,7 +99,10 @@ def main():
     df = pd.read_csv(args.input_csv_path)
 
     train_folds, val_folds, test_folds = split_train_val_test(
-        df, num_folds=args.num_folds, train_percentage=args.train_ratio, val_percentage=args.val_ratio
+        df,
+        num_folds=args.num_folds,
+        train_percentage=args.train_ratio,
+        val_percentage=args.val_ratio,
     )
 
     for fold in range(args.num_folds):

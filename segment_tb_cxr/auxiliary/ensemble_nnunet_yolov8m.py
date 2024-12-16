@@ -37,7 +37,7 @@ def generate_segmentations(df, yolov8_weights, output_dir):
     nnunet_yolov8_non_cropped_pred_img_filenames = []
     nnunet_yolov8_cropped_binary_mask_pred_img_filenames = []
     nnunet_yolov8_non_cropped_binary_mask_pred_img_filenames = []
-    
+
     for idx, img_path in enumerate(df["processed_Filename"].tolist()):
         print(img_path)
         original_img = _read_image(img_path)
@@ -49,17 +49,18 @@ def generate_segmentations(df, yolov8_weights, output_dir):
         )
 
         img_arr = sitk.GetArrayViewFromImage(rescaled_img)
-        img_arr =  np.expand_dims(img_arr,-1)
-        img_arr = np.repeat(img_arr,3,2)
+        img_arr = np.expand_dims(img_arr, -1)
+        img_arr = np.repeat(img_arr, 3, 2)
         results = model.predict(source=img_arr, save=False, save_txt=False)
 
-
-        if results[0].prob_masks is not None: # If the yolov8 predictions does not contain any regions of "TB"
+        if (
+            results[0].prob_masks is not None
+        ):  # If the yolov8 predictions does not contain any regions of "TB"
             cropped_prob_masks = results[0].prob_masks.data.cpu().numpy()
             combined_mask = cropped_prob_masks.sum(axis=0)
 
-            combined_mask = np.clip(combined_mask,0,1)
-            
+            combined_mask = np.clip(combined_mask, 0, 1)
+
             result_image = sitk.GetImageFromArray(combined_mask)
 
             new_spacing = [
@@ -81,72 +82,116 @@ def generate_segmentations(df, yolov8_weights, output_dir):
                 0,
                 sitk.sitkFloat32,
             )
-            
+
             yolov8_pred_img_filename = os.path.join(
                 output_dir,
-                os.path.splitext(os.path.basename(img_path))[0] + "_yolov8_cropped.nrrd",
+                os.path.splitext(os.path.basename(img_path))[0]
+                + "_yolov8_cropped.nrrd",
             )
             sitk.WriteImage(pred_mask_original_size, yolov8_pred_img_filename)
-            
+
             arr_yolov8m_org_size = sitk.GetArrayFromImage(pred_mask_original_size)
-            
-            np.savez(os.path.join(
-                output_dir,
-                os.path.splitext(os.path.basename(img_path))[0] + "_yolov8_cropped.npz",
-            ),arr_yolov8m_org_size)
-            
-            arr_nnunet_org_size = np.load(df['nnUNet_pred_arr_file'].iloc[idx])['probabilities'][1][0]
-            
-            ensemble_models_org_size = np.mean([arr_yolov8m_org_size,arr_nnunet_org_size],axis=0)
-            
-            np.savez( os.path.join(
-                            output_dir,
-                            os.path.splitext(os.path.basename(img_path))[0] + "_ensemble_nnunet_yolov8_cropped.npz",
-                        ),ensemble_models_org_size)
-            
+
+            np.savez(
+                os.path.join(
+                    output_dir,
+                    os.path.splitext(os.path.basename(img_path))[0]
+                    + "_yolov8_cropped.npz",
+                ),
+                arr_yolov8m_org_size,
+            )
+
+            arr_nnunet_org_size = np.load(df["nnUNet_pred_arr_file"].iloc[idx])[
+                "probabilities"
+            ][1][0]
+
+            ensemble_models_org_size = np.mean(
+                [arr_yolov8m_org_size, arr_nnunet_org_size], axis=0
+            )
+
+            np.savez(
+                os.path.join(
+                    output_dir,
+                    os.path.splitext(os.path.basename(img_path))[0]
+                    + "_ensemble_nnunet_yolov8_cropped.npz",
+                ),
+                ensemble_models_org_size,
+            )
+
             nnunet_yolov8_cropped_pred_img_filename = os.path.join(
                 output_dir,
-                os.path.splitext(os.path.basename(img_path))[0] + "_ensemble_nnunet_yolov8_cropped.nrrd",
+                os.path.splitext(os.path.basename(img_path))[0]
+                + "_ensemble_nnunet_yolov8_cropped.nrrd",
             )
-            sitk.WriteImage(sitk.GetImageFromArray(ensemble_models_org_size), nnunet_yolov8_cropped_pred_img_filename  )
+            sitk.WriteImage(
+                sitk.GetImageFromArray(ensemble_models_org_size),
+                nnunet_yolov8_cropped_pred_img_filename,
+            )
 
             nnunet_yolov8_cropped_binary_mask_pred_img_filename = os.path.join(
                 output_dir,
-                os.path.splitext(os.path.basename(img_path))[0] + "_ensemble_nnunet_yolov8_cropped_binary_mask.nrrd",
+                os.path.splitext(os.path.basename(img_path))[0]
+                + "_ensemble_nnunet_yolov8_cropped_binary_mask.nrrd",
             )
-            sitk.WriteImage(sitk.GetImageFromArray(ensemble_models_org_size) > 0.5, nnunet_yolov8_cropped_binary_mask_pred_img_filename  )
+            sitk.WriteImage(
+                sitk.GetImageFromArray(ensemble_models_org_size) > 0.5,
+                nnunet_yolov8_cropped_binary_mask_pred_img_filename,
+            )
 
-        else:# Modify the code below to divde the probabilties from nnunet by 2 (assuming zeroes for yolov8 predicted images)
-            arr_nnunet_org_size = np.load(df['nnUNet_pred_arr_file'].iloc[idx])['probabilities'][1][0]
-            nnunet_yolov8_non_cropped_pred_img_filename =  None
-            nnunet_yolov8_non_cropped_binary_mask_pred_img_filename =  None
+        else:  # Modify the code below to divde the probabilties from nnunet
+            # by 2 (assuming zeroes for yolov8 predicted images)
+            arr_nnunet_org_size = np.load(df["nnUNet_pred_arr_file"].iloc[idx])[
+                "probabilities"
+            ][1][0]
+            nnunet_yolov8_non_cropped_pred_img_filename = None
+            nnunet_yolov8_non_cropped_binary_mask_pred_img_filename = None
             nnunet_yolov8_cropped_pred_img_filename = os.path.join(
                 output_dir,
-                os.path.splitext(os.path.basename(img_path))[0] + "_nnunet_yolov8_none.nrrd",
+                os.path.splitext(os.path.basename(img_path))[0]
+                + "_nnunet_yolov8_none.nrrd",
             )
-            sitk.WriteImage(sitk.GetImageFromArray(arr_nnunet_org_size/2),  nnunet_yolov8_cropped_pred_img_filename )
+            sitk.WriteImage(
+                sitk.GetImageFromArray(arr_nnunet_org_size / 2),
+                nnunet_yolov8_cropped_pred_img_filename,
+            )
             nnunet_yolov8_cropped_binary_mask_pred_img_filename = os.path.join(
                 output_dir,
-                os.path.splitext(os.path.basename(img_path))[0] + "_nnunet_yolov8_none_binary_mask.nrrd",
+                os.path.splitext(os.path.basename(img_path))[0]
+                + "_nnunet_yolov8_none_binary_mask.nrrd",
             )
-            sitk.WriteImage(sitk.GetImageFromArray(arr_nnunet_org_size/2) > 0.5,  nnunet_yolov8_cropped_binary_mask_pred_img_filename )
+            sitk.WriteImage(
+                sitk.GetImageFromArray(arr_nnunet_org_size / 2) > 0.5,
+                nnunet_yolov8_cropped_binary_mask_pred_img_filename,
+            )
 
-        
-        nnunet_yolov8_cropped_pred_img_filenames.append(nnunet_yolov8_cropped_pred_img_filename)
-        nnunet_yolov8_non_cropped_pred_img_filenames.append(nnunet_yolov8_non_cropped_pred_img_filename)
-        nnunet_yolov8_cropped_binary_mask_pred_img_filenames.append(nnunet_yolov8_cropped_binary_mask_pred_img_filename)
-        nnunet_yolov8_non_cropped_binary_mask_pred_img_filenames.append(nnunet_yolov8_non_cropped_binary_mask_pred_img_filename)
+        nnunet_yolov8_cropped_pred_img_filenames.append(
+            nnunet_yolov8_cropped_pred_img_filename
+        )
+        nnunet_yolov8_non_cropped_pred_img_filenames.append(
+            nnunet_yolov8_non_cropped_pred_img_filename
+        )
+        nnunet_yolov8_cropped_binary_mask_pred_img_filenames.append(
+            nnunet_yolov8_cropped_binary_mask_pred_img_filename
+        )
+        nnunet_yolov8_non_cropped_binary_mask_pred_img_filenames.append(
+            nnunet_yolov8_non_cropped_binary_mask_pred_img_filename
+        )
 
-    return nnunet_yolov8_cropped_pred_img_filenames,nnunet_yolov8_non_cropped_pred_img_filenames,\
-           nnunet_yolov8_cropped_binary_mask_pred_img_filenames,\
-            nnunet_yolov8_non_cropped_binary_mask_pred_img_filenames
-               
+    return (
+        nnunet_yolov8_cropped_pred_img_filenames,
+        nnunet_yolov8_non_cropped_pred_img_filenames,
+        nnunet_yolov8_cropped_binary_mask_pred_img_filenames,
+        nnunet_yolov8_non_cropped_binary_mask_pred_img_filenames,
+    )
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("yolov8_weights", type=str, help="Weights path")
     parser.add_argument(
-        "input_csv_path", type=str, help="Input CSV path with column processed_Filename and nnUNet_pred_arr_file"
+        "input_csv_path",
+        type=str,
+        help="Input CSV path with column processed_Filename and nnUNet_pred_arr_file",
     )
     parser.add_argument(
         "output_dir", type=str, help="output directory to save the images"
@@ -165,16 +210,16 @@ def main():
         "nnunet_yolov8_cropped_pred_img_filenames",
         "nnunet_yolov8_non_cropped_pred_img_filenames",
         "nnunet_yolov8_cropped_binary_mask_pred_img_filenames",
-        "nnunet_yolov8_non_cropped_binary_mask_pred_img_filenames"
+        "nnunet_yolov8_non_cropped_binary_mask_pred_img_filenames",
     ]
-    
+
     # Unpack the generated segmentations
     segmentations = generate_segmentations(df, args.weights, args.output_dir)
-    
+
     # Assign values to the corresponding DataFrame columns
     for col, data in zip(columns, segmentations):
-        df[col] = data    
-        
+        df[col] = data
+
     df.to_csv(args.output_csv_path, index=False)
 
 

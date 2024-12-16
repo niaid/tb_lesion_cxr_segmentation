@@ -23,7 +23,7 @@ the above command line should generate a csv file called "tbseg.csv"
 
 After running the above command line , user should then run the below command line to generate the train/val/test csv files which are then used to train the model.
 ```
-python -m segment_tb_cxr.data_preparation.prepare_train_val_test_csvs tbseg.csv 
+python -m segment_tb_cxr.data_preparation.prepare_train_val_test_csvs tbseg.csv 5
 ```
 
 ## UNet-ResNet18:
@@ -37,7 +37,7 @@ After running the above command user will approximately see the number of files 
 
 As this is a simple task to train user can give a fraction amount by which these images can be utilized.
 ```
-python -m segment_tb_cxr.unet_resnet18.training.train_tb_segment segment_tb_cxr/unet_resnet18/training/unet_resnet18_params.json tbseg_train.csv tbseg_val.csv tbseg --plot_images_for_debugging False
+python -m segment_tb_cxr.unet_resnet18.training.train_tb_segment segment_tb_cxr/unet_resnet18/training/unet_resnet18_params.json tbseg_train_fold_0.csv tbseg_val_fold_0.csv tbseg --plot_images_for_debugging False
 ```
 
 ### Inference
@@ -46,7 +46,7 @@ To run the inference results from the model, user can run the below command.
 
 Please first make sure to install the environment using requirements.txt file .
 ```
-python -m segment_tb_cxr.unet_resnet18.inference.inference_tb_segment input_csv_path segment_tb_cxr/unet_resnet18/weights/tbseg_loss.pt unet_resnet18_preds segment_tb_cxr/unet_resnet18/training/unet_resnet18_params.json output_csv_filename
+python -m segment_tb_cxr.unet_resnet18.inference.inference_tb_segment input_csv_path segment_tb_cxr/unet_resnet18/weights/tbseg_fold0_loss.pt unet_resnet18_preds_fold0 segment_tb_cxr/unet_resnet18/training/unet_resnet18_params.json output_csv_filename
 ```
 The command line above can then be used to segment the tb labels from the input CSV file (with column name 'processsed_Filename'), pretrained TB lesion segmentation model. User needs to provide
 an output directory to save the segmented images, output prediction CSV file name at the end of the argument to save the prediction file names along with input CXR. The output CSV file will contain values containing columns "processed_Filename" and  "pred_tb_seg_file" indicating the input filenames and predicted tb segmentation file in th eoutput directory respectively.
@@ -59,15 +59,15 @@ python -m segment_tb_cxr.evaluation.evaluate_segmentations input_csv_path overla
 From the above command, if the user has reference files('Output_tb_seg_filename') for each input CXR file, then they can use the above command to generate the overlap results  between the reference files and the predeicted segmentation files. The input csv file must contain the columns 'Output_tb_seg_filename' and 'pred_tb_seg_file' representing the reference and the predicted segmentation file respectively.
 
 
-## YOLOv8(m):
+## YOLOv8(n,s,m,l,x):
 
 ### Prepare data for segmentation 
 
 
-After preparing training,validation and testing files, user needs to provide input training,validation and testing csv files containing columns 'processed_Filename' and 'Output_seg_filename' representing input CXR files and reference label files respectively. these files are generated from the data preparation step in the UNet-ResNet18 description. This data preparation script prepares images and labels for each of the split train/val and test accordingly for training the yolov8 model.
+After preparing training,validation and testing files for all the five folds, user needs to provide the corresponding input training,validation and testing csv files containing columns 'processed_Filename' and 'Output_seg_filename' representing input CXR files and reference label files respectively. these files are generated from the data preparation step in the UNet-ResNet18 description. This data preparation script prepares images and labels for each of the split train/val and test accordingly for training the yolov8 model.
 
 ```
-python -m segment_tb_cxr.yolov8.data_preparation.data_prep tbseg_train.csv  tbseg_val.csv tbseg_test.csv "yolov8_dataset" tblesion_segment.yaml
+python -m segment_tb_cxr.yolov8.data_preparation.data_prep tbseg_train_fold0.csv  tbseg_val_fold0.csv tbseg_test_fold0.csv "yolov8_dataset_fold0" tblesion_segment_fold0.yaml
 ```
 
 ### Training
@@ -80,7 +80,7 @@ After running the above command user will approximately see the number of files 
 
 As this is a simple task to train user can give a fraction amount by which these images can be utilized.
 ```
-python -m segment_tb_cxr.yolov8.training.train_tb_segment  yolov8m-seg.pt yolov8_dataset/tblesion_segment.yaml segment_tb_cxr/yollov8/training/yolov8_params.json
+python -m segment_tb_cxr.yolov8.training.train_tb_segment  yolov8m-seg.pt yolov8_dataset/tblesion_segment_fold0.yaml segment_tb_cxr/yollov8/training/yolov8_params.json
 ```
 The weights file is saved in the path folder as "runs/segment/train/weights/best.pt"
 
@@ -90,14 +90,14 @@ To run the inference results from the model, user can run the below command.
 
 Please first make sure to install the environment using requirements.txt file .
 ```
-python -m segment_tb_cxr.yolov8.inference.inference_tb_segment runs/segment/train/weights/best.pt input_csv_path yolov8_preds output_csv_filename
+python -m segment_tb_cxr.yolov8.inference.inference_tb_segment yolov8/inference/weights/YOLOv8m-seg_fold4.pt input_csv_path yolov8_preds output_csv_filename
 ```
 The command line above can then be used to segment the tb labels from the input CSV file (with column name 'processsed_Filename'), pretrained TB lesion segmentation model trained by yolov8. User needs to provide an output directory to save the segmented images, output prediction CSV file name at the end of the argument to save the prediction file names along with input CXR. The output CSV file will contain values containing columns "processed_Filename" and  "pred_tb_seg_file" indicating the input filenames and predicted tb segmentation file in the output directory respectively.
 
 ### Evaluation:
 
 ```
-python -m segment_tb_cxr.evaluation.evaluate_segmentations input_csv_path overlap_results.csv
+python -m segment_tb_cxr.evaluation.evaluate_segmentations input_csv_path output_csv_filename
 ```
 From the above command, if the user has reference files('Output_tb_seg_filename') for each input CXR file, then they can use the above command to generate the overlap results  between the reference files and the predicted segmentation files. The input csv file must contain the columns 'Output_tb_seg_filename' and 'pred_tb_seg_file' representing the reference and the predicted segmentation file respectively.
 
@@ -109,7 +109,7 @@ From the above command, if the user has reference files('Output_tb_seg_filename'
 After preparing training,validation and testing files, User needs to provide input training,validation and testing csv files containing columns 'processed_Filename' and 'Output_seg_filename' representing input CXR files and reference label files respectively. Description on how to generate these files were present in "Prepare data for segmentation" section . This data preparation script prepares images and labels for each of the split train/val and test accordingly for training the yolov8 model. tblungcxr is suffix (Fullname: Dataset001_tblungcxr) for the output folder name where the nnUNet images are saved.
 
 ```
-python -m segment_tb_cxr.nnunet.data_preparation.data_prep tbseg_train.csv  tbseg_val.csv tbseg_test.csv "tblungcxr"
+python -m segment_tb_cxr.nnunet.data_preparation.data_prep tbseg_train_fold0.csv  tbseg_val_fold0.csv tbseg_test_fold0.csv "tblungcxr"
 ```
 
 ### Training
@@ -131,7 +131,7 @@ To run the inference results from the model, user can run the below command.
 
 Please first make sure to install the environment using requirements.txt file .
 ```
-python -m segment_tb_cxr.nnunet.inference.inference_tb_segment  imagesTs predsTs
+python -m segment_tb_cxr.nnunet.inference.inference_tb_segment  imagesTs nnunet/weights/nnUNetResNetXL_fold3.pth predsTs
 ```
 
 imagesTs is the input folder containing images with the extension of _0000.nrrd. predsTs is the prediction folder.
@@ -142,6 +142,14 @@ python -m segment_tb_cxr.evaluation.evaluate_segmentations input_csv_path overla
 ```
 From the above command, if the user has reference files('Output_tb_seg_filename') for each input CXR file, then they can use the above command to generate the overlap results  between the reference files and the predicted segmentation files. The input csv file must contain the columns 'Output_tb_seg_filename' and 'pred_tb_seg_file' representing the reference and the predicted segmentation file respectively.
 
+
+
+### Ensemble of YOLOv8 and nnUNet
+To compute ensemble of predictions from each of YOLOv8 and nnUNet segmentation models user needs to preare csv file containing columns like processed_Filename and nnUNet_pred_arr_file where nnUNet_pred_arr_file represents the predicted numpy array of probabilities from nnUNet model. 
+
+```
+python -m segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m yolov8m_weights input_csv_path ensemble_preds output_ensemble_preds.csv
+```
 
 ## Hyperparameter optimization:
 Hyperparameter optimization is conducted initially on the smaller dataset to find the most important features using optuna. This is conducted using easy parallelization as suggested by this [link](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html). To create a sample RDB server (postgresql in the below example) for this process, user can follow the below steps.

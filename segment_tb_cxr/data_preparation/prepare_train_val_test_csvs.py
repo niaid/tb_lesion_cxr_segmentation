@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.model_selection import KFold
 
 
-def split_train_val_test(df, train_percentage=0.7, val_percentage=0.15):
+def split_train_val_test(df,num_folds=5, train_percentage=0.7, val_percentage=0.15):
     """
 
     This function generates train/val and test dataframes with the user
@@ -24,7 +24,7 @@ def split_train_val_test(df, train_percentage=0.7, val_percentage=0.15):
     """
 
     # Number of splits
-    kf = KFold(n_splits=5, shuffle=True, random_state=42)
+    kf = KFold(n_splits=num_folds, shuffle=True, random_state=42)
 
     train_folds = []
     val_folds = []
@@ -77,6 +77,11 @@ def main():
         help="Output prefix to save train , val and test sets.",
     )
     parser.add_argument(
+        "num_folds",
+        type=str,
+        help="Output prefix to save train , val and test sets.",
+    )
+    parser.add_argument(
         "--train_ratio",
         type=float,
         default=0.7,
@@ -94,10 +99,10 @@ def main():
     df = pd.read_csv(args.input_csv_path)
 
     train_folds, val_folds, test_folds = split_train_val_test(
-        df, train_percentage=args.train_ratio, val_percentage=args.val_ratio
+        df, num_folds=args.num_folds, train_percentage=args.train_ratio, val_percentage=args.val_ratio
     )
 
-    for fold in range(5):
+    for fold in range(args.num_folds):
         train_folds[fold].to_csv(
             args.output_prefix_for_csv_filename + "_fold_" + str(fold) + "_train.csv",
             index=False,

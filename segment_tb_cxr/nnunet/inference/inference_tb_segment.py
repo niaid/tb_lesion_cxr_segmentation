@@ -18,6 +18,11 @@ def main():
         help="Input folder containing the images in _0000.nrrd format",
     )
     parser.add_argument(
+        "weights",
+        type=str,
+        help="Pretrained weights",
+    )
+    parser.add_argument(
         "output_folder",
         type=str,
         help="output folder to save the predictions",
@@ -31,6 +36,10 @@ def main():
             args.input_folder,
             "-o",
             args.output_folder,
+            "-chk",
+            args.weights,
+            "-p",
+            "nnUNetResEncUNetXLPlans_40G",
             "-c",
             "2d",
             "--save_probabilities",

@@ -96,7 +96,7 @@ def gen_yolov8_prob_map(file, yolov8_model):
     return yolov8_prob
 
 
-def gen_nnunet_prob_map(file, nnunet_weights):
+def gen_nnunet_prob_map(file, predictor):
     """
     Generates a probability map for an input image using a pre-trained nnU-Net model.
 
@@ -107,8 +107,8 @@ def gen_nnunet_prob_map(file, nnunet_weights):
     ----------
     file : str
         Path to the input image file.
-    nnunet_weights : str
-        Path to the pre-trained nnU-Net weights. This includes the directory and checkpoint name.
+    predictor : str
+        Initialized and loaded nnUNet model.
 
     Returns:
     -------
@@ -117,22 +117,6 @@ def gen_nnunet_prob_map(file, nnunet_weights):
 
     """
     original_img, image_props = SimpleITKIO().read_images([file])
-    predictor = nnUNetPredictor(
-        tile_step_size=0.5,
-        use_gaussian=True,
-        use_mirroring=True,
-        perform_everything_on_device=True,
-        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-        verbose=False,
-        verbose_preprocessing=False,
-        allow_tqdm=True,
-    )
-
-    predictor.initialize_from_trained_model_folder(
-        os.path.dirname(os.path.dirname(nnunet_weights)),
-        checkpoint_name=os.path.basename(nnunet_weights),
-        use_folds=(0,),
-    )
 
     # Perform prediction and get the probabilities as a numpy array
     nnunet_mask, nnunet_prob = predictor.predict_single_npy_array(
@@ -186,8 +170,8 @@ def gen_ensembled_yolov8_nnunet_segmentation(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("yolov8_weights", type=str, help="Weights path")
-    parser.add_argument("nnunet_weights", type=str, help="Weights path")
+    parser.add_argument("yolov8_weights", type=str, help="Weights path for yolov8")
+    parser.add_argument("nnunet_weights", type=str, help="Weights path for nnunet")
     parser.add_argument(
         "input_csv_path",
         type=str,
@@ -204,11 +188,30 @@ def main():
     if not os.path.exists(args.output_seg_dir):
         os.makedirs(args.output_seg_dir)
 
+    # Inititalize YOLOv8 model
     yolov8_model = YOLO(args.yolov8_weights)
+
+    # Initialize nnUNet model
+    predictor = nnUNetPredictor(
+        tile_step_size=0.5,
+        use_gaussian=True,
+        use_mirroring=True,
+        perform_everything_on_device=True,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        verbose=False,
+        verbose_preprocessing=False,
+        allow_tqdm=True,
+    )
+
+    predictor.initialize_from_trained_model_folder(
+        os.path.dirname(os.path.dirname(args.nnunet_weights)),
+        checkpoint_name=os.path.basename(args.nnunet_weights),
+        use_folds=(0,),
+    )
 
     for file in df["filename"].tolist():
         yolov8_prob_map = gen_yolov8_prob_map(file, yolov8_model)
-        nnunet_prob_map = gen_nnunet_prob_map(file, args.nnunet_weights)
+        nnunet_prob_map = gen_nnunet_prob_map(file, predictor)
         gen_ensembled_yolov8_nnunet_segmentation(
             file, yolov8_prob_map, nnunet_prob_map, args.output_seg_dir
         )

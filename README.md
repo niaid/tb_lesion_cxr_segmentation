@@ -61,12 +61,12 @@ From the above command, if the user has reference files('Output_tb_seg_filename'
 
 ## YOLOv8(n,s,m,l,x):
 
-Before using YOLOv8 , copy the following files from auxiliary/yolov8 and overwrite the original yolov8 files.
+**Before using YOLOv8 , copy the following files from auxiliary/yolov8 and overwrite the original yolov8 files.
 
 
 1. auxiliary/yolov8/predict.py --> ultralytics/models/yolo/segment/predict.py
 2. auxiliary/yolov8/ops.py --> ultralytics/models/ops.py
-3. ultralytics/yolov8/results.py --> ultralytics/engine/results.py
+3. ultralytics/yolov8/results.py --> ultralytics/engine/results.py**
 
 
 

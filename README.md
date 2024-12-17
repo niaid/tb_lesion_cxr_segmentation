@@ -61,6 +61,15 @@ From the above command, if the user has reference files('Output_tb_seg_filename'
 
 ## YOLOv8(n,s,m,l,x):
 
+Before using YOLOv8 , copy the following files from auxiliary/yolov8 and overwrite the original yolov8 files.
+
+
+1. auxiliary/yolov8/predict.py --> ultralytics/models/yolo/segment/predict.py
+2. auxiliary/yolov8/ops.py --> ultralytics/models/ops.py
+3. ultralytics/yolov8/results.py --> ultralytics/engine/results.py
+
+
+
 ### Prepare data for segmentation 
 
 
@@ -145,10 +154,10 @@ From the above command, if the user has reference files('Output_tb_seg_filename'
 
 
 ### Ensemble of YOLOv8 and nnUNet
-To compute ensemble of predictions from each of YOLOv8 and nnUNet segmentation models user needs to preare csv file containing columns like processed_Filename and nnUNet_pred_arr_file where nnUNet_pred_arr_file represents the predicted numpy array of probabilities from nnUNet model. 
+To compute ensemble of predictions from each of YOLOv8 and nnUNet segmentation models user needs to preare csv file containing columns like 'filename'. The output folder will save the segmented filenames with the format of  {filename}_seg.nrrd
 
 ```
-python -m segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m yolov8m_weights input_csv_path ensemble_preds output_ensemble_preds.csv
+python -m segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m segment_tb_cxr/yolov8/weights/yolov8.pt segment_tb_cxr/nnunet/weights/fold_0/nnunet.pth segment_tb_cxr/sample.csv segment_tb_cxr/sample_seg
 ```
 
 ## Hyperparameter optimization:

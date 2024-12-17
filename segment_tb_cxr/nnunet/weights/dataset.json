@@ -1,0 +1,9 @@
+{
+    "channel_names": {
+        "0": "zscore"
+    },
+    "labels": {
+        "background": 0,
+        "TB": 1
+    }
+}

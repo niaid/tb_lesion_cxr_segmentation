@@ -2,225 +2,216 @@ import os
 import argparse
 import pandas as pd
 import SimpleITK as sitk
+import torch
 from ultralytics import YOLO
 import numpy as np
-from segment_tb_cxr_old.inference.inference_tb_segment import _read_image
+from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import _read_image
+from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
+from nnunetv2.imageio.simpleitk_reader_writer import SimpleITKIO
+import warnings
+
+warnings.filterwarnings("ignore")
+
+"""
+This script generates probability maps from YOLOv8 and nnU-Net models,
+computes their mean to create an ensemble, and then applies a threshold
+to generate a binary segmentation mask. The resulting mask is saved
+to the specified output folder. It takes in the inputs with column name
+'filename', weights file paths of YOLOv8 and nnUNet and output segmentation
+folder to save thegenerated ensemble predictions. The prediction in the output
+folder are generated with {filename}_seg.nrrd format.
+"""
 
 
-def generate_segmentations(df, yolov8_weights, output_dir):
+def gen_yolov8_prob_map(file, yolov8_model):
     """
+    Generates a probability map for the presence of specific regions (e.g., TB) in an input image using a YOLOv8 model.
 
-    This function reads the input image filename, extracts the numpy array and
-    is then passed into the loaded model to generate the predicted segmentations.
-    The predicted segmentation in numpy array format is generated in the
-    usually 640*480 shape and os is then resampled to the original size. This
-    resampled original size image is then saved into the output directory.
+    This function processes an input image, applies a YOLOv8 model to predict
+    probability masks, and resamples the results back to the original image
+    size. If no regions are detected by the model, the function returns `None`.
 
-    Args:
-
-        df(pd.DataFrame): dataframe containing columns processed_Filename
-        weights(str): Input path to the weights
-        output_dir(str): output directory to save the predicted segmentations
-        output_csv_filename
+    Parameters:
+    ----------
+    file : str
+        Path to the input image file.
+    yolov8_model : YOLOv8 model object
+        Pre-trained YOLOv8 model used for predicting probability masks.
 
     Returns:
-          ---
+    -------
+    np.ndarray or None
+        A 2D NumPy array representing the resampled probability map in the original image dimensions.
+        If no regions are detected by the YOLOv8 model, returns `None`.
+    """
+    original_img = _read_image(file)
+
+    # Yolov8 expects inputs to be in uint8 format scaled to [0-255].
+    # Different intensity ranges result in different results.
+    rescaled_img = sitk.Cast(
+        sitk.RescaleIntensity(original_img, 0, 255), sitk.sitkUInt8
+    )
+
+    img_arr = sitk.GetArrayViewFromImage(rescaled_img)
+    img_arr = np.expand_dims(img_arr, -1)
+    img_arr = np.repeat(img_arr, 3, 2)
+    results = yolov8_model.predict(source=img_arr, save=False, save_txt=False)
+
+    if (
+        results[0].prob_masks is not None
+    ):  # If the yolov8 predictions does not contain any regions of "TB"
+        cropped_prob_masks = results[0].prob_masks.data.cpu().numpy()
+        combined_mask = cropped_prob_masks.sum(axis=0)
+
+        combined_mask = np.clip(combined_mask, 0, 1)
+
+        result_image = sitk.GetImageFromArray(combined_mask)
+
+        new_spacing = [
+            sz * spc / nsz
+            for nsz, sz, spc in zip(
+                original_img.GetSize(),
+                result_image.GetSize(),
+                result_image.GetSpacing(),
+            )
+        ]
+        pred_mask_original_size = sitk.Resample(
+            result_image,
+            original_img.GetSize(),
+            sitk.Transform(),
+            sitk.sitkLinear,
+            original_img.GetOrigin(),
+            new_spacing,
+            original_img.GetDirection(),
+            0,
+            sitk.sitkFloat32,
+        )
+
+        yolov8_prob = sitk.GetArrayFromImage(pred_mask_original_size)
+
+    else:  # Modify the code below to divde the probabilties from nnunet
+        # by 2 (assuming zeroes for yolov8 predicted images)
+        yolov8_prob = None
+
+    return yolov8_prob
+
+
+def gen_nnunet_prob_map(file, nnunet_weights):
+    """
+    Generates a probability map for an input image using a pre-trained nnU-Net model.
+
+    This function reads an input image, initializes an nnU-Net predictor with specified settings,
+    and performs inference using the provided nnU-Net weights. It returns the predicted probability map.
+
+    Parameters:
+    ----------
+    file : str
+        Path to the input image file.
+    nnunet_weights : str
+        Path to the pre-trained nnU-Net weights. This includes the directory and checkpoint name.
+
+    Returns:
+    -------
+    np.ndarray
+        A NumPy array representing the predicted probability map from nnU-Net for the input image.
 
     """
+    original_img, image_props = SimpleITKIO().read_images([file])
+    predictor = nnUNetPredictor(
+        tile_step_size=0.5,
+        use_gaussian=True,
+        use_mirroring=True,
+        perform_everything_on_device=True,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        verbose=False,
+        verbose_preprocessing=False,
+        allow_tqdm=True,
+    )
 
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    predictor.initialize_from_trained_model_folder(
+        os.path.dirname(os.path.dirname(nnunet_weights)),
+        checkpoint_name=os.path.basename(nnunet_weights),
+        use_folds=(0,),
+    )
 
-    model = YOLO(yolov8_weights)
+    # Perform prediction and get the probabilities as a numpy array
+    nnunet_mask, nnunet_prob = predictor.predict_single_npy_array(
+        original_img, image_props, save_or_return_probabilities=True
+    )
 
-    nnunet_yolov8_cropped_pred_img_filenames = []
-    nnunet_yolov8_non_cropped_pred_img_filenames = []
-    nnunet_yolov8_cropped_binary_mask_pred_img_filenames = []
-    nnunet_yolov8_non_cropped_binary_mask_pred_img_filenames = []
+    return nnunet_prob[1][0]
 
-    for idx, img_path in enumerate(df["processed_Filename"].tolist()):
-        print(img_path)
-        original_img = _read_image(img_path)
 
-        # Yolov8 expects inputs to be in uint8 format scaled to [0-255].
-        # Different intensity ranges result in different results.
-        rescaled_img = sitk.Cast(
-            sitk.RescaleIntensity(original_img, 0, 255), sitk.sitkUInt8
-        )
+def gen_ensembled_yolov8_nnunet_segmentation(
+    file, yolov8_prob_map, nnunet_prob_map, output_seg_folder, binary_threshold=0.5
+):
+    """
+    This function takes probability maps from YOLOv8 and nnU-Net, computes their mean to create an ensemble,
+    and then applies a threshold to generate a binary segmentation mask. The resulting mask is saved
+    to the specified output folder.
 
-        img_arr = sitk.GetArrayViewFromImage(rescaled_img)
-        img_arr = np.expand_dims(img_arr, -1)
-        img_arr = np.repeat(img_arr, 3, 2)
-        results = model.predict(source=img_arr, save=False, save_txt=False)
+    Parameters:
+    ----------
+    file : str
+        Path to the input image file. Used to copy metadata and determine the output filename.
+    yolov8_prob_map : np.ndarray
+        Probability map generated by the YOLOv8 model.
+    nnunet_prob_map : np.ndarray
+        Probability map generated by the nnU-Net model.
+    output_seg_folder : str
+        Directory where the resulting binary segmentation mask will be saved.
 
-        if (
-            results[0].prob_masks is not None
-        ):  # If the yolov8 predictions does not contain any regions of "TB"
-            cropped_prob_masks = results[0].prob_masks.data.cpu().numpy()
-            combined_mask = cropped_prob_masks.sum(axis=0)
+    Returns:
+    -------
+    None
+        The binary segmentation mask is written to the output folder as a `_seg.nrrd` file.
 
-            combined_mask = np.clip(combined_mask, 0, 1)
+    """
+    ensembled_prob = np.mean([yolov8_prob_map, nnunet_prob_map], axis=0)
 
-            result_image = sitk.GetImageFromArray(combined_mask)
+    ensemble_nnunet_yolov8_prob_map_img = sitk.GetImageFromArray(ensembled_prob)
 
-            new_spacing = [
-                sz * spc / nsz
-                for nsz, sz, spc in zip(
-                    original_img.GetSize(),
-                    result_image.GetSize(),
-                    result_image.GetSpacing(),
-                )
-            ]
-            pred_mask_original_size = sitk.Resample(
-                result_image,
-                original_img.GetSize(),
-                sitk.Transform(),
-                sitk.sitkLinear,
-                original_img.GetOrigin(),
-                new_spacing,
-                original_img.GetDirection(),
-                0,
-                sitk.sitkFloat32,
-            )
+    original_img = _read_image(file)
 
-            yolov8_pred_img_filename = os.path.join(
-                output_dir,
-                os.path.splitext(os.path.basename(img_path))[0]
-                + "_yolov8_cropped.nrrd",
-            )
-            sitk.WriteImage(pred_mask_original_size, yolov8_pred_img_filename)
+    ensemble_nnunet_yolov8_prob_map_img.CopyInformation(original_img)
 
-            arr_yolov8m_org_size = sitk.GetArrayFromImage(pred_mask_original_size)
+    output_filename = os.path.join(
+        output_seg_folder, os.path.splitext(os.path.basename(file))[0] + "_seg.nrrd"
+    )
 
-            np.savez(
-                os.path.join(
-                    output_dir,
-                    os.path.splitext(os.path.basename(img_path))[0]
-                    + "_yolov8_cropped.npz",
-                ),
-                arr_yolov8m_org_size,
-            )
-
-            arr_nnunet_org_size = np.load(df["nnUNet_pred_arr_file"].iloc[idx])[
-                "probabilities"
-            ][1][0]
-
-            ensemble_models_org_size = np.mean(
-                [arr_yolov8m_org_size, arr_nnunet_org_size], axis=0
-            )
-
-            np.savez(
-                os.path.join(
-                    output_dir,
-                    os.path.splitext(os.path.basename(img_path))[0]
-                    + "_ensemble_nnunet_yolov8_cropped.npz",
-                ),
-                ensemble_models_org_size,
-            )
-
-            nnunet_yolov8_cropped_pred_img_filename = os.path.join(
-                output_dir,
-                os.path.splitext(os.path.basename(img_path))[0]
-                + "_ensemble_nnunet_yolov8_cropped.nrrd",
-            )
-            sitk.WriteImage(
-                sitk.GetImageFromArray(ensemble_models_org_size),
-                nnunet_yolov8_cropped_pred_img_filename,
-            )
-
-            nnunet_yolov8_cropped_binary_mask_pred_img_filename = os.path.join(
-                output_dir,
-                os.path.splitext(os.path.basename(img_path))[0]
-                + "_ensemble_nnunet_yolov8_cropped_binary_mask.nrrd",
-            )
-            sitk.WriteImage(
-                sitk.GetImageFromArray(ensemble_models_org_size) > 0.5,
-                nnunet_yolov8_cropped_binary_mask_pred_img_filename,
-            )
-
-        else:  # Modify the code below to divde the probabilties from nnunet
-            # by 2 (assuming zeroes for yolov8 predicted images)
-            arr_nnunet_org_size = np.load(df["nnUNet_pred_arr_file"].iloc[idx])[
-                "probabilities"
-            ][1][0]
-            nnunet_yolov8_non_cropped_pred_img_filename = None
-            nnunet_yolov8_non_cropped_binary_mask_pred_img_filename = None
-            nnunet_yolov8_cropped_pred_img_filename = os.path.join(
-                output_dir,
-                os.path.splitext(os.path.basename(img_path))[0]
-                + "_nnunet_yolov8_none.nrrd",
-            )
-            sitk.WriteImage(
-                sitk.GetImageFromArray(arr_nnunet_org_size / 2),
-                nnunet_yolov8_cropped_pred_img_filename,
-            )
-            nnunet_yolov8_cropped_binary_mask_pred_img_filename = os.path.join(
-                output_dir,
-                os.path.splitext(os.path.basename(img_path))[0]
-                + "_nnunet_yolov8_none_binary_mask.nrrd",
-            )
-            sitk.WriteImage(
-                sitk.GetImageFromArray(arr_nnunet_org_size / 2) > 0.5,
-                nnunet_yolov8_cropped_binary_mask_pred_img_filename,
-            )
-
-        nnunet_yolov8_cropped_pred_img_filenames.append(
-            nnunet_yolov8_cropped_pred_img_filename
-        )
-        nnunet_yolov8_non_cropped_pred_img_filenames.append(
-            nnunet_yolov8_non_cropped_pred_img_filename
-        )
-        nnunet_yolov8_cropped_binary_mask_pred_img_filenames.append(
-            nnunet_yolov8_cropped_binary_mask_pred_img_filename
-        )
-        nnunet_yolov8_non_cropped_binary_mask_pred_img_filenames.append(
-            nnunet_yolov8_non_cropped_binary_mask_pred_img_filename
-        )
-
-    return (
-        nnunet_yolov8_cropped_pred_img_filenames,
-        nnunet_yolov8_non_cropped_pred_img_filenames,
-        nnunet_yolov8_cropped_binary_mask_pred_img_filenames,
-        nnunet_yolov8_non_cropped_binary_mask_pred_img_filenames,
+    sitk.WriteImage(
+        ensemble_nnunet_yolov8_prob_map_img > binary_threshold, output_filename
     )
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("yolov8_weights", type=str, help="Weights path")
+    parser.add_argument("nnunet_weights", type=str, help="Weights path")
     parser.add_argument(
         "input_csv_path",
         type=str,
-        help="Input CSV path with column processed_Filename and nnUNet_pred_arr_file",
+        help="Input CSV path with column filename",
     )
     parser.add_argument(
-        "output_dir", type=str, help="output directory to save the images"
-    )
-    parser.add_argument(
-        "output_csv_path",
-        type=str,
-        help="Output CSV path with column filename and pred_tb_seg_file",
+        "output_seg_dir", type=str, help="output directory to save the images"
     )
 
     args = parser.parse_args()
 
     df = pd.read_csv(args.input_csv_path)
 
-    columns = [
-        "nnunet_yolov8_cropped_pred_img_filenames",
-        "nnunet_yolov8_non_cropped_pred_img_filenames",
-        "nnunet_yolov8_cropped_binary_mask_pred_img_filenames",
-        "nnunet_yolov8_non_cropped_binary_mask_pred_img_filenames",
-    ]
+    if not os.path.exists(args.output_seg_dir):
+        os.makedirs(args.output_seg_dir)
 
-    # Unpack the generated segmentations
-    segmentations = generate_segmentations(df, args.weights, args.output_dir)
+    yolov8_model = YOLO(args.yolov8_weights)
 
-    # Assign values to the corresponding DataFrame columns
-    for col, data in zip(columns, segmentations):
-        df[col] = data
-
-    df.to_csv(args.output_csv_path, index=False)
+    for file in df["filename"].tolist():
+        yolov8_prob_map = gen_yolov8_prob_map(file, yolov8_model)
+        nnunet_prob_map = gen_nnunet_prob_map(file, args.nnunet_weights)
+        gen_ensembled_yolov8_nnunet_segmentation(
+            file, yolov8_prob_map, nnunet_prob_map, args.output_seg_dir
+        )
 
 
 if __name__ == "__main__":

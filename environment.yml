@@ -3,15 +3,18 @@ channels:
   - conda-forge
   - defaults
 dependencies:
+  - python==3.10
   - postgresql
+  - pip
   - pip:
       - simpleitk
       - pandas
       - scikit-learn
       - pydicom
-      - monai
       - numpy
-      - ultralytics
+      - ultralytics==8.2.2
+      - monai
       - nnunetv2
       - optuna
+      - tensorboard
 

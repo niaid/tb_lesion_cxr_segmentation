@@ -7,6 +7,7 @@ import contextlib
 import io
 import sys
 from segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m import gen_nnunet_prob_map
+
 """
 This inference file is used to run inference using the trained nnunet model.
 The resulting mask is saved to the specified output folder. It takes in a
@@ -14,6 +15,7 @@ The resulting mask is saved to the specified output folder. It takes in a
 folder to save the generated predictions. The prediction in the output
 folder are generated with {filename}_seg.nrrd format.
 """
+
 
 @contextlib.contextmanager
 def suppress_stdout():
@@ -29,6 +31,7 @@ def suppress_stdout():
 # variables are not exported.
 with suppress_stdout():
     from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
+
 
 def main():
     parser = argparse.ArgumentParser("Prediction of TB regions using nnunet model")
@@ -55,7 +58,7 @@ def main():
     args = parser.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    
+
     # Initialize nnUNet model and silence the progress bar to be consistent with YOLO behavior.
     predictor = nnUNetPredictor(device=torch.device(device), allow_tqdm=False)
 
@@ -65,22 +68,24 @@ def main():
         checkpoint_name=os.path.basename(args.nnunet_weights),
         use_folds=(0,),
     )
-    
+
     df = pd.read_csv(args.input_csv_path)
 
     for file in df["filename"].tolist():
         nnunet_prob_map = gen_nnunet_prob_map(file, predictor)
 
         output_seg_file = os.path.join(
-                args.output_seg_folder, os.path.splitext(os.path.basename(file))[0] + "_pred_seg.nrrd"
-            )
-        
-        sitk.WriteImage(sitk.GetImageFromArray(nnunet_prob_map),output_seg_file)
-        
+            args.output_seg_folder,
+            os.path.splitext(os.path.basename(file))[0] + "_pred_seg.nrrd",
+        )
+
+        sitk.WriteImage(sitk.GetImageFromArray(nnunet_prob_map), output_seg_file)
+
     df["pred_tb_seg_file"] = df["filename"].apply(
         lambda x: os.path.splitext(os.path.basename(x))[0] + "_pred_seg.nrrd"
     )
     df.to_csv(args.output_csv_filename, index=False)
+
 
 if __name__ == "__main__":
     sys.exit(main())

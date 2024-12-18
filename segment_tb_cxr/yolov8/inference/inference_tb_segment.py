@@ -88,12 +88,12 @@ def generate_segmentations(df, weights, output_dir):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("weights", type=str, help="Weights path")
+    parser.add_argument("weights", type=str, help="Weights path for yolov8")
     parser.add_argument(
-        "input_csv_path", type=str, help="Input CSV path with column processed_Filename"
+        "input_csv_path", type=str, help="Input CSV path with column filename"
     )
     parser.add_argument(
-        "output_dir", type=str, help="output directory to save the images"
+        "output_seg_folder", type=str, help="output directory to save the predictions."
     )
     parser.add_argument(
         "output_csv_path",
@@ -105,9 +105,9 @@ def main():
 
     df = pd.read_csv(args.input_csv_path)
 
-    generate_segmentations(df, args.weights, args.output_dir)
+    generate_segmentations(df, args.weights, args.output_seg_folder)
 
-    df["pred_tb_seg_file"] = df["processed_Filename"].apply(
+    df["pred_tb_seg_file"] = df["filename"].apply(
         lambda x: os.path.splitext(os.path.basename(x))[0] + "_pred_seg.nrrd"
     )
     df.to_csv(args.output_csv_filename, index=False)

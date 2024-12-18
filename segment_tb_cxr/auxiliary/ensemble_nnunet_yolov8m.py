@@ -89,8 +89,7 @@ def gen_yolov8_prob_map(file, yolov8_model):
 
         yolov8_prob = sitk.GetArrayFromImage(pred_mask_original_size)
 
-    else:  # Modify the code below to divde the probabilties from nnunet
-        # by 2 (assuming zeroes for yolov8 predicted images)
+    else:
         yolov8_prob = None
 
     return yolov8_prob
@@ -151,7 +150,12 @@ def gen_ensembled_yolov8_nnunet_segmentation(
         The binary segmentation mask is written to the output folder as a `_seg.nrrd` file.
 
     """
-    ensembled_prob = np.mean([yolov8_prob_map, nnunet_prob_map], axis=0)
+
+    if yolov8_prob_map is not None:
+        ensembled_prob = np.mean([yolov8_prob_map, nnunet_prob_map], axis=0)
+
+    else:
+        ensembled_prob = nnunet_prob_map / 2
 
     ensemble_nnunet_yolov8_prob_map_img = sitk.GetImageFromArray(ensembled_prob)
 
@@ -179,6 +183,12 @@ def main():
     )
     parser.add_argument(
         "output_seg_dir", type=str, help="output directory to save the images"
+    )
+    parser.add_argument(
+        "--binary_mask_threshold",
+        type=float,
+        default=0.5,
+        help="Binary mask threshold to mask the TB regions.",
     )
 
     args = parser.parse_args()
@@ -213,7 +223,11 @@ def main():
         yolov8_prob_map = gen_yolov8_prob_map(file, yolov8_model)
         nnunet_prob_map = gen_nnunet_prob_map(file, predictor)
         gen_ensembled_yolov8_nnunet_segmentation(
-            file, yolov8_prob_map, nnunet_prob_map, args.output_seg_dir
+            file,
+            yolov8_prob_map,
+            nnunet_prob_map,
+            args.output_seg_dir,
+            args.binary_mask_threshold,
         )
 
 

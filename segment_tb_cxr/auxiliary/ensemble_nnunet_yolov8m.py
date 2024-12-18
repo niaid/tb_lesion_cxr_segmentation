@@ -2,25 +2,43 @@ import os
 import argparse
 import pandas as pd
 import SimpleITK as sitk
-import torch
 from ultralytics import YOLO
+import torch
 import numpy as np
 from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import _read_image
-from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
-from nnunetv2.imageio.simpleitk_reader_writer import SimpleITKIO
+import sys
+import contextlib
+import io
 import warnings
-
-warnings.filterwarnings("ignore")
 
 """
 This script generates probability maps from YOLOv8 and nnU-Net models,
 computes their mean to create an ensemble, and then applies a threshold
 to generate a binary segmentation mask. The resulting mask is saved
-to the specified output folder. It takes in the inputs with column name
-'filename', weights file paths of YOLOv8 and nnUNet and output segmentation
-folder to save thegenerated ensemble predictions. The prediction in the output
+to the specified output folder. It takes in a csv with column name
+'filename', weight file paths of YOLOv8 and nnUNet and output segmentation
+folder to save the generated ensemble predictions. The prediction in the output
 folder are generated with {filename}_seg.nrrd format.
 """
+
+
+@contextlib.contextmanager
+def suppress_stdout():
+    new_target = io.StringIO()
+    old_target, sys.stdout = sys.stdout, new_target
+    try:
+        yield new_target
+    finally:
+        sys.stdout = old_target
+
+
+# Use the context manager to suppress output from nnunet library when its
+# variables are not exported.
+with suppress_stdout():
+    from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
+    from nnunetv2.imageio.simpleitk_reader_writer import SimpleITKIO
+
+warnings.filterwarnings("ignore")
 
 
 def gen_yolov8_prob_map(file, yolov8_model):
@@ -55,7 +73,9 @@ def gen_yolov8_prob_map(file, yolov8_model):
     img_arr = sitk.GetArrayViewFromImage(rescaled_img)
     img_arr = np.expand_dims(img_arr, -1)
     img_arr = np.repeat(img_arr, 3, 2)
-    results = yolov8_model.predict(source=img_arr, save=False, save_txt=False)
+    results = yolov8_model.predict(
+        source=img_arr, save=False, save_txt=False, verbose=False
+    )
 
     if (
         results[0].prob_masks is not None
@@ -89,8 +109,8 @@ def gen_yolov8_prob_map(file, yolov8_model):
 
         yolov8_prob = sitk.GetArrayFromImage(pred_mask_original_size)
 
-    else:  # Modify the code below to divde the probabilties from nnunet
-        # by 2 (assuming zeroes for yolov8 predicted images)
+    else:
+
         yolov8_prob = None
 
     return yolov8_prob
@@ -167,7 +187,9 @@ def gen_ensembled_yolov8_nnunet_segmentation(
     )
 
     sitk.WriteImage(
-        ensemble_nnunet_yolov8_prob_map_img > binary_threshold, output_filename
+        ensemble_nnunet_yolov8_prob_map_img > binary_threshold,
+        output_filename,
+        useCompression=True,
     )
 
 
@@ -189,35 +211,31 @@ def main():
 
     args = parser.parse_args()
 
-    df = pd.read_csv(args.input_csv_path)
-
     if not os.path.exists(args.output_seg_dir):
         os.makedirs(args.output_seg_dir)
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     # Inititalize YOLOv8 model
     yolov8_model = YOLO(args.yolov8_weights)
+    yolov8_model.to(device)
 
-    # Initialize nnUNet model
-    predictor = nnUNetPredictor(
-        tile_step_size=0.5,
-        use_gaussian=True,
-        use_mirroring=True,
-        perform_everything_on_device=True,
-        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-        verbose=False,
-        verbose_preprocessing=False,
-        allow_tqdm=True,
-    )
+    # Initialize nnUNet model and silence the progress bar to be consistent with YOLO behavior.
+    predictor = nnUNetPredictor(device=torch.device(device), allow_tqdm=False)
 
+    # Directory in nnunet/weights has a sub folder named fold_X where X is arbitrary. Here '0' is used.
     predictor.initialize_from_trained_model_folder(
         os.path.dirname(os.path.dirname(args.nnunet_weights)),
         checkpoint_name=os.path.basename(args.nnunet_weights),
         use_folds=(0,),
     )
 
+    df = pd.read_csv(args.input_csv_path)
+
     for file in df["filename"].tolist():
         yolov8_prob_map = gen_yolov8_prob_map(file, yolov8_model)
         nnunet_prob_map = gen_nnunet_prob_map(file, predictor)
+
         gen_ensembled_yolov8_nnunet_segmentation(
             file,
             yolov8_prob_map,

@@ -65,7 +65,7 @@ From the above command, if the user has reference files('Output_tb_seg_filename'
 
 
 1. auxiliary/yolov8/predict.py --> ultralytics/models/yolo/segment/predict.py
-2. auxiliary/yolov8/ops.py --> ultralytics/models/ops.py
+2. auxiliary/yolov8/ops.py --> ultralytics/utils/ops.py
 3. ultralytics/yolov8/results.py --> ultralytics/engine/results.py
 
 

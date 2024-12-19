@@ -217,7 +217,7 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Inititalize YOLOv8 model
-    yolov8_model = YOLO(args.yolov8_weights)
+    yolov8_model = YOLO(args.yolov8_weights, verbose=False)
     yolov8_model.to(device)
 
     # Initialize nnUNet model and silence the progress bar to be consistent with YOLO behavior.

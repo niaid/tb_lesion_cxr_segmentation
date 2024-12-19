@@ -1,4 +1,4 @@
-name: tb_segmentation
+name: tb_segmentationV4
 channels:
   - conda-forge
   - defaults
@@ -13,6 +13,7 @@ dependencies:
       - pydicom
       - numpy
       - ultralytics==8.2.2
+      - dill
       - monai
       - nnunetv2
       - optuna

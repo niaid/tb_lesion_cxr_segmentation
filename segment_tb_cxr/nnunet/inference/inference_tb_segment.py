@@ -7,13 +7,19 @@ import contextlib
 import io
 import sys
 from segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m import gen_nnunet_prob_map
+from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import (
+    file_path,
+    csv_path,
+)
 
 """
 This inference file is used to run inference using the trained nnunet model.
 The resulting mask is saved to the specified output folder. It takes in a
  csv with column name 'filename', weight file path and nnUNet and output segmentation
-folder to save the generated predictions. The prediction in the output
-folder are generated with {filename}_seg.nrrd format.
+folder to save the generated nnunet predictions and output csv filename with
+an extra column name 'nnunet_pred_tb_seg_file' corresponding to the original
+filename. The prediction in the output
+folder are generated with {filename}_nnunet_pred_seg.nrrd format.
 """
 
 
@@ -37,13 +43,13 @@ def main():
     parser = argparse.ArgumentParser("Prediction of TB regions using nnunet model")
     parser.add_argument(
         "input_csv_path",
-        type=str,
+        type=csv_path,
         help="Input CSV path containing column filename",
     )
     parser.add_argument(
         "nnunet_weights",
-        type=str,
-        help="weights path fotr nnunet",
+        type=file_path,
+        help="weights path for nnunet",
     )
     parser.add_argument(
         "output_seg_folder",
@@ -51,9 +57,12 @@ def main():
         help="output folder to save the predictions",
     )
     parser.add_argument(
+        "--binary_mask_threshold", type=float, default=0.5, help="Binary mask threshold"
+    )
+    parser.add_argument(
         "output_csv_path",
         type=str,
-        help="Output CSV path with column filename and pred_tb_seg_file",
+        help="Output CSV path with column filename and nnunet_pred_tb_seg_file",
     )
     args = parser.parse_args()
 
@@ -76,15 +85,21 @@ def main():
 
         output_seg_file = os.path.join(
             args.output_seg_folder,
-            os.path.splitext(os.path.basename(file))[0] + "_pred_seg.nrrd",
+            os.path.splitext(os.path.basename(file))[0] + "_nnunet_pred_seg.nrrd",
         )
 
-        sitk.WriteImage(sitk.GetImageFromArray(nnunet_prob_map), output_seg_file)
+        sitk.WriteImage(
+            sitk.GetImageFromArray(nnunet_prob_map) > args.binary_mask_threshold,
+            output_seg_file,
+        )
 
-    df["pred_tb_seg_file"] = df["filename"].apply(
-        lambda x: os.path.splitext(os.path.basename(x))[0] + "_pred_seg.nrrd"
+    df["nnunet_pred_tb_seg_file"] = df["filename"].apply(
+        lambda x: os.path.join(
+            args.output_seg_folder,
+            os.path.splitext(os.path.basename(x))[0] + "_nnunet_pred_seg.nrrd",
+        )
     )
-    df.to_csv(args.output_csv_filename, index=False)
+    df.to_csv(args.output_csv_path, index=False)
 
 
 if __name__ == "__main__":

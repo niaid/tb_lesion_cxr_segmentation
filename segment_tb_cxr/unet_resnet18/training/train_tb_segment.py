@@ -123,13 +123,13 @@ def get_transforms(model_info):
                 spatial_size=model_info["img_size"],
                 mode=("bilinear", "nearest"),
             ),
-            RepeatChanneld(keys=["img", "seg"], repeats=1),
+            RepeatChanneld(keys=["img", "seg"], repeats=3),
             ScaleIntensityd(keys=["img", "seg"]),
             NormalizeIntensityd(
                 keys=["img"],
                 subtrahend=model_info["means"],
                 divisor=model_info["standard_deviation"],
-                channel_wise=False,
+                channel_wise=True,
             ),
             RandCropByPosNegLabeld(
                 keys=["img", "seg"],
@@ -160,13 +160,13 @@ def get_transforms(model_info):
                 spatial_size=model_info["img_size"],
                 mode=("bilinear", "nearest"),
             ),
-            RepeatChanneld(keys=["img", "seg"], repeats=1),
+            RepeatChanneld(keys=["img", "seg"], repeats=3),
             ScaleIntensityd(keys=["img", "seg"]),
             NormalizeIntensityd(
                 keys=["img"],
                 subtrahend=model_info["means"],
                 divisor=model_info["standard_deviation"],
-                channel_wise=False,
+                channel_wise=True,
             ),
         ]
     )
@@ -180,7 +180,7 @@ def get_transforms(model_info):
                 spatial_size=model_info["img_size"],
                 mode=("bilinear"),
             ),
-            RepeatChanneld(keys=["img"], repeats=1),
+            RepeatChanneld(keys=["img"], repeats=3),
             ScaleIntensityd(keys=["img"]),
             NormalizeIntensityd(
                 keys=["img"],

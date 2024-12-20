@@ -2,7 +2,6 @@ import os
 import json
 import torch
 import argparse
-import pathlib
 import pandas as pd
 import numpy as np
 import SimpleITK as sitk
@@ -13,14 +12,54 @@ from monai.data import list_data_collate, decollate_batch, DataLoader
 from monai.inferers import sliding_window_inference
 from segment_tb_cxr.unet_resnet18.training.train_tb_segment import get_transforms
 
+
 """
 This script is used to predict the binary TB masks on the test Chest X Rays
 using the pretrained TB segmentation model. User needs to provide the hyperparameters file
 that is shared across training and inference. This JSON file is located in the
 training folder (segment_tb_cxr/unet_resnet18/training/unet_resnet18_params.json)
 User needs to provide the output prediction directory name to save the binary
-TB masks in the given folder.
+TB masks and output csv filename with an extra column name 'customunet_pred_tb_seg_file'
+corresponding to the original filenames in the given folder with the format of
+ {filename}_customunet_pred_seg.nrrd
 """
+
+
+def file_path(path):
+
+    if os.path.isfile(path):
+        return path
+    else:
+        raise argparse.ArgumentTypeError(
+            f"Invalid argument ({path}), not a file path or file does not exist."
+        )
+
+
+def csv_path(path, required_columns={"filename"}):
+    """
+    Define the csv_path type for use with argparse. Checks
+    that the given path string is a path to a csv file and that the
+    header of the csv file contains the required columns.
+    """
+
+    required_columns = set(required_columns)
+    if os.path.isfile(path):
+        try:  # only read the csv header
+            expected_columns_exist = required_columns.issubset(
+                set(pd.read_csv(path, nrows=0).columns.tolist())
+            )
+            if expected_columns_exist:
+                return path
+            else:
+                raise argparse.ArgumentTypeError(
+                    f"Invalid argument ({path}), does not contain all expected columns."
+                )
+        except UnicodeDecodeError:
+            raise argparse.ArgumentTypeError(
+                f"Invalid argument ({path}), not a csv file."
+            )
+    else:
+        raise argparse.ArgumentTypeError(f"Invalid argument ({path}), not a file.")
 
 
 def _get_channels(model):
@@ -155,7 +194,7 @@ def _predict_mask(file_path, model, device, model_info):
     post_trans = Compose(
         [
             Activations(sigmoid=True),
-            AsDiscrete(threshold=model_info["fixed_variables"]["threshold"]),
+            AsDiscrete(threshold=model_info["threshold"]),
         ]
     )
     train_transforms, val_transforms, test_transforms = get_transforms(model_info)
@@ -208,39 +247,36 @@ def _predict_mask(file_path, model, device, model_info):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="TB Segmentation Model in Chest X Rays."
+        description="Predict TB segmentation regions within Chest X Rays using\
+                    custom UNet model."
     )
-
     parser.add_argument(
         "input_csv_path",
-        type=pathlib.Path,
-        help="Input CSV path containing column names as 'processed_Filename' and \
-            'Output_tb_seg_filename' which represent paths of  CXRs and their\
-            corresponding binary TB masks respectively",
+        type=csv_path,
+        help="Input CSV path containing column names as 'filename'",
     )
 
     parser.add_argument(
         "tb_segmentation_model_path",
-        type=pathlib.Path,
-        help="Model path for pretrained TB segmentation",
+        type=file_path,
+        help="Customer UNet Model path for pretrained TB segmentation",
     )
     parser.add_argument(
-        "output_pred_dir",
+        "output_seg_dir",
         type=str,
         help="Output Directory to ave the prediction images in their original \
               images",
     )
-
     parser.add_argument(
         "model_info_json_path",
-        type=pathlib.Path,
+        type=file_path,
         help="Path to JSON file containing each segmentation model's keys and \
               their respective hyperparameters as values",
     )
     parser.add_argument(
         "output_csv_filename",
         type=str,
-        help="Output CSV filename to save the column 'pred_tb_seg_file' along \
+        help="Output CSV filename to save the column 'customunet_pred_tb_seg_file' along \
               with the initial columns in the input_csv_file",
     )
     args = parser.parse_args()
@@ -250,26 +286,25 @@ def main(argv=None):
 
     model, device = _load_model(args.tb_segmentation_model_path)
 
-    df = pd.read_csv(args.input_csv_path)
-    if not os.path.exists(args.output_pred_dir):
-        os.makedirs(args.output_pred_dir)
+    if not os.path.exists(args.output_seg_dir):
+        os.makedirs(args.output_seg_dir)
 
-    for file in df["processed_Filename"]:
+    df = pd.read_csv(args.input_csv_path)
+
+    for file in df["filename"]:
         mask = _predict_mask(file, model, device, model_info)
+        output_filename = os.path.join(
+            args.output_seg_dir,
+            os.path.splitext(os.path.basename(file))[0] + "_customunet_pred_seg.nrrd",
+        )
         sitk.WriteImage(
             mask,
-            str(
-                pathlib.Path(args.output_pred_dir)
-                / (pathlib.Path(file).stem + "_pred_seg.nrrd")
-            ),
+            output_filename,
             useCompression=True,
         )
 
-    df["pred_tb_seg_file"] = df["processed_Filename"].apply(
-        lambda x: str(
-            pathlib.Path(args.output_pred_dir)
-            / (pathlib.Path(x).stem + "_pred_seg.nrrd")
-        )
+    df["customunet_pred_tb_seg_file"] = df["filename"].apply(
+        lambda x: os.path.splitext(os.path.basename(x))[0] + "_customunet_pred_seg.nrrd"
     )
     df.to_csv(args.output_csv_filename, index=False)
 

@@ -2,115 +2,78 @@ import os
 import argparse
 import pandas as pd
 import SimpleITK as sitk
+import torch
 from ultralytics import YOLO
-from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import _read_image
+from segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m import gen_yolov8_prob_map
+from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import (
+    file_path,
+    csv_path,
+)
 
 
-def generate_segmentations(df, weights, output_dir):
-    """
-
-    This function reads the input image filename, extracts the numpy array and
-    is then passed into the loaded model to generate the predicted segmentations.
-    The predicted segmentation in numpy array format is generated in the
-    usually 640*480 shape and os is then resampled to the original size. This
-    resampled original size image is then saved into the output directory.
-
-    Args:
-
-        df(pd.DataFrame): dataframe containing columns processed_Filename
-        weights(str): Input path to the weights
-        output_dir(str): output directory to save the predicted segmentations
-        output_csv_filename
-
-    Returns:
-          ---
-
-    """
-
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    model = YOLO(weights)
-
-    for idx, img_path in enumerate(df["processed_Filename"].tolist()):
-        original_img = _read_image(img_path)
-
-        # Yolov8 expects inputs to be in uint8 format scaled to [0-255].
-        # Different intensity ranges result in different results.
-        rescaled_img = sitk.Cast(
-            sitk.RescaleIntensity(original_img, 0, 255), sitk.sitkUInt8
-        )
-
-        img_arr = sitk.GetArrayViewFromImage(rescaled_img)
-        results = model.predict(source=img_arr, save=False, save_txt=False)
-
-        output_pred_file = os.path.join(
-            output_dir,
-            os.path.splitext(os.path.basename(img_path))[0] + "_pred_seg.nrrd",
-        )
-        if results[0].masks is not None:
-            im_array = results[0].masks.data.cpu().numpy()
-            combined_mask = im_array.sum(axis=0)
-
-            result_image = sitk.GetImageFromArray(combined_mask) > 0
-
-            new_spacing = [
-                sz * spc / nsz
-                for nsz, sz, spc in zip(
-                    original_img.GetSize(),
-                    result_image.GetSize(),
-                    result_image.GetSpacing(),
-                )
-            ]
-            pred_mask_original_size = sitk.Resample(
-                result_image,
-                original_img.GetSize(),
-                sitk.Transform(),
-                sitk.sitkNearestNeighbor,
-                original_img.GetOrigin(),
-                new_spacing,
-                original_img.GetDirection(),
-                0,
-                sitk.sitkUInt8,
-            )
-
-            sitk.WriteImage(pred_mask_original_size, output_pred_file)
-
-        else:
-            sitk.WriteImage(
-                sitk.Image(original_img.GetSize(), sitk.sitkUInt8),
-                os.path.join(
-                    output_dir,
-                    os.path.splitext(os.path.basename(img_path))[0] + "_pred_seg.nrrd",
-                ),
-            )
+"""
+This inference file is used to run inference using the trained nnunet model.
+The resulting mask is saved to the specified output folder. It takes in a
+ csv with column name 'filename', weight file path and nnUNet and output segmentation
+folder to save the generated yolov8 predictions and output csv filename with
+an extra column name 'yolov8_pred_tb_seg_file' corresponding to the original
+filename. The prediction in the output folder are generated with
+{filename}_yolov8_pred_seg.nrrd format.
+"""
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("weights", type=str, help="Weights path for yolov8")
     parser.add_argument(
-        "input_csv_path", type=str, help="Input CSV path with column filename"
+        "input_csv_path", type=csv_path, help="Input CSV path with column filename"
+    )
+    parser.add_argument(
+        "yolov8_weights", type=file_path, help="Weights path for yolov8"
     )
     parser.add_argument(
         "output_seg_folder", type=str, help="output directory to save the predictions."
     )
     parser.add_argument(
+        "--binary_mask_threshold", type=float, default=0.5, help="Binary mask threshold"
+    )
+    parser.add_argument(
         "output_csv_path",
         type=str,
-        help="Output CSV path with column filename and pred_tb_seg_file",
+        help="Output CSV path with column filename and yolov8_pred_tb_seg_file",
     )
 
     args = parser.parse_args()
 
+    if not os.path.exists(args.output_seg_folder):
+        os.makedirs(args.output_seg_folder)
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    yolov8_model = YOLO(args.yolov8_weights, verbose=False)
+    yolov8_model.to(device)
+
     df = pd.read_csv(args.input_csv_path)
 
-    generate_segmentations(df, args.weights, args.output_seg_folder)
+    for file in df["filename"].tolist():
+        yolov8_prob_map = gen_yolov8_prob_map(file, yolov8_model)
 
-    df["pred_tb_seg_file"] = df["filename"].apply(
-        lambda x: os.path.splitext(os.path.basename(x))[0] + "_pred_seg.nrrd"
+        output_seg_file = os.path.join(
+            args.output_seg_folder,
+            os.path.splitext(os.path.basename(file))[0] + "_yolov8_pred_seg.nrrd",
+        )
+
+        sitk.WriteImage(
+            sitk.GetImageFromArray(yolov8_prob_map) > args.binary_mask_threshold,
+            output_seg_file,
+        )
+
+    df["yolov8_pred_tb_seg_file"] = df["filename"].apply(
+        lambda x: os.path.join(
+            args.output_seg_folder,
+            os.path.splitext(os.path.basename(x))[0] + "_yolov8_pred_seg.nrrd",
+        )
     )
-    df.to_csv(args.output_csv_filename, index=False)
+    df.to_csv(args.output_csv_path, index=False)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,11 @@ import SimpleITK as sitk
 from ultralytics import YOLO
 import torch
 import numpy as np
-from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import _read_image
+from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import (
+    _read_image,
+    file_path,
+    csv_path,
+)
 import sys
 import contextlib
 import io
@@ -16,9 +20,11 @@ This script generates probability maps from YOLOv8 and nnU-Net models,
 computes their mean to create an ensemble, and then applies a threshold
 to generate a binary segmentation mask. The resulting mask is saved
 to the specified output folder. It takes in a csv with column name
-'filename', weight file paths of YOLOv8 and nnUNet and output segmentation
-folder to save the generated ensemble predictions. The prediction in the output
-folder are generated with {filename}_seg.nrrd format.
+'filename', weight file paths of YOLOv8 and nnUNet, output segmentation
+folder to save the generated ensemble predictions and output csv filename with
+an extra column name 'ensemble_pred_tb_seg_file' corresponding to the original
+filenames. The prediction in the output folder are generated with
+{filename}_ensemble_pred_seg.nrrd format.
 """
 
 
@@ -36,7 +42,6 @@ def suppress_stdout():
 # variables are not exported.
 with suppress_stdout():
     from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
-    from nnunetv2.imageio.simpleitk_reader_writer import SimpleITKIO
 
 warnings.filterwarnings("ignore")
 
@@ -136,11 +141,18 @@ def gen_nnunet_prob_map(file, predictor):
         A NumPy array representing the predicted probability map from nnU-Net for the input image.
 
     """
-    original_img, image_props = SimpleITKIO().read_images([file])
+    original_img = _read_image(file)
+
+    npy_image = sitk.GetArrayFromImage(original_img)
+    npy_image = npy_image[None, None]
+    max_spacing = max(original_img.GetSpacing())
+    spacings_for_nnunet = [max_spacing * 999, *list(original_img.GetSpacing())[::-1]]
+
+    image_props = {"spacing": spacings_for_nnunet}
 
     # Perform prediction and get the probabilities as a numpy array
     nnunet_mask, nnunet_prob = predictor.predict_single_npy_array(
-        original_img, image_props, save_or_return_probabilities=True
+        npy_image, image_props, save_or_return_probabilities=True
     )
 
     return nnunet_prob[1][0]
@@ -183,7 +195,8 @@ def gen_ensembled_yolov8_nnunet_segmentation(
     ensemble_nnunet_yolov8_prob_map_img.CopyInformation(original_img)
 
     output_filename = os.path.join(
-        output_seg_folder, os.path.splitext(os.path.basename(file))[0] + "_seg.nrrd"
+        output_seg_folder,
+        os.path.splitext(os.path.basename(file))[0] + "_ensemble_pred_seg.nrrd",
     )
 
     sitk.WriteImage(
@@ -195,12 +208,16 @@ def gen_ensembled_yolov8_nnunet_segmentation(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("yolov8_weights", type=str, help="Weights path for yolov8")
-    parser.add_argument("nnunet_weights", type=str, help="Weights path for nnunet")
     parser.add_argument(
         "input_csv_path",
-        type=str,
+        type=csv_path,
         help="Input CSV path with column filename",
+    )
+    parser.add_argument(
+        "yolov8_weights", type=file_path, help="Weights path for yolov8"
+    )
+    parser.add_argument(
+        "nnunet_weights", type=file_path, help="Weights path for nnunet"
     )
     parser.add_argument(
         "output_seg_dir", type=str, help="output directory to save the images"
@@ -208,7 +225,11 @@ def main():
     parser.add_argument(
         "--binary_mask_threshold", type=float, default=0.5, help="Binary mask threshold"
     )
-
+    parser.add_argument(
+        "output_csv_path",
+        type=str,
+        help="Output CSV path with column filename and ensemble_pred_tb_seg_file",
+    )
     args = parser.parse_args()
 
     if not os.path.exists(args.output_seg_dir):
@@ -243,6 +264,14 @@ def main():
             args.output_seg_dir,
             args.binary_mask_threshold,
         )
+
+    df["ensemble_pred_tb_seg_file"] = df["filename"].apply(
+        lambda x: os.path.join(
+            args.output_seg_dir,
+            os.path.splitext(os.path.basename(x))[0] + "_ensemble_pred_seg.nrrd",
+        )
+    )
+    df.to_csv(args.output_csv_path, index=False)
 
 
 if __name__ == "__main__":

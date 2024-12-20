@@ -46,10 +46,10 @@ To run the inference results from the model, user can run the below command.
 
 Please first make sure to install the environment using requirements.txt file .
 ```
-python -m segment_tb_cxr.unet_resnet18.inference.inference_tb_segment input_csv_path segment_tb_cxr/unet_resnet18/weights/tbseg_fold0_loss.pt unet_resnet18_preds_fold0 segment_tb_cxr/unet_resnet18/training/unet_resnet18_params.json output_csv_filename
+python -m segment_tb_cxr.unet_resnet18.inference.inference_tb_segment segment_tb_cxr/sample.csv segment_tb_cxr/unet_resnet18/weights/customunet.pt segment_tb_cxr/sample_seg segment_tb_cxr/unet_resnet18/training/unet_resnet18_params.json segment_tb_cxr/sample_preds.csv
 ```
-The command line above can then be used to segment the tb labels from the input CSV file (with column name 'processsed_Filename'), pretrained TB lesion segmentation model. User needs to provide
-an output directory to save the segmented images, output prediction CSV file name at the end of the argument to save the prediction file names along with input CXR. The output CSV file will contain values containing columns "processed_Filename" and  "pred_tb_seg_file" indicating the input filenames and predicted tb segmentation file in th eoutput directory respectively.
+The command line above can then be used to segment the tb labels from the input CSV file (with column name 'filename'), pretrained TB lesion segmentation model by custom unet. User needs to provide
+an output directory to save the segmented images, output prediction CSV file name at the end of the argument to save the prediction file names along with input CXR. The output CSV file will contain values containing columns "filename" and  "customunet_pred_tb_seg_file" indicating the input filenames and predicted tb segmentation file in th output directory respectively.
 
 ### Evaluation:
 
@@ -99,7 +99,7 @@ To run the inference results from the model, user can run the below command.
 
 Please first make sure to install the environment using requirements.txt file .
 ```
-python -m segment_tb_cxr.yolov8.inference.inference_tb_segment segment_tb_cxr/yolov8/weights/yolov8.pt segment_tb_cxr/sample.csv segment_tb_cxr/yolov8_preds segment_tb_cxr/sample_yolov8_preds.csv
+python -m segment_tb_cxr.yolov8.inference.inference_tb_segment segment_tb_cxr/sample.csv segment_tb_cxr/yolov8/weights/yolov8.pt  segment_tb_cxr/sample_seg segment_tb_cxr/sample_yolov8_preds.csv
 ```
 The command line above can then be used to segment the tb labels from the input CSV file (with column name 'filename'), pretrained TB lesion segmentation model trained by yolov8. User needs to provide an output directory to save the segmented images, output prediction CSV file name at the end of the argument to save the prediction file names along with input CXR. The output CSV file will contain values containing columns "filename" and  "pred_tb_seg_file" indicating the input filenames and predicted tb segmentation file in the output directory respectively.
 
@@ -142,7 +142,7 @@ To run the inference results from the model, user can run the below command.
 
 Please first make sure to install the environment using requirements.txt file .
 ```
-python -m segment_tb_cxr.nnunet.inference.inference_tb_segment  segment_tb_cxr/sample.csv segment_tb_cxr/nnunet/weights/nnunet.pth segment_tb_cxr/nnunet_preds segment_tb_cxr/sample_nnunet_preds.csv
+python -m segment_tb_cxr.nnunet.inference.inference_tb_segment  segment_tb_cxr/sample.csv segment_tb_cxr/nnunet/weights/fold_0/nnunet.pth segment_tb_cxr/sample_seg --binary_mask_threshold 0.5 segment_tb_cxr/sample_nnunet_preds.csv
 ```
 
 ### Evaluation:
@@ -161,7 +161,7 @@ From the above command, if the user has reference files('Output_tb_seg_filename'
 To compute ensemble of predictions from each of YOLOv8 and nnUNet segmentation models user needs to preare csv file containing columns like 'filename'. The output folder will save the segmented filenames with the format of  {filename}_seg.nrrd
 
 ```
-python -m segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m segment_tb_cxr/yolov8/weights/yolov8.pt segment_tb_cxr/nnunet/weights/fold_0/nnunet.pth segment_tb_cxr/sample.csv segment_tb_cxr/sample_ensemble_preds --binary_mask_threshold 0.5
+python -m segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m segment_tb_cxr/sample.csv segment_tb_cxr/yolov8/weights/yolov8.pt segment_tb_cxr/nnunet/weights/fold_0/nnunet.pth segment_tb_cxr/sample_seg --binary_mask_threshold 0.5 segment_tb_cxr/sample_nnunet_preds.csv
 ```
 
 ## Hyperparameter optimization:

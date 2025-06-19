@@ -63,10 +63,10 @@ From the above command, if the user has reference files('Output_tb_seg_filename'
 
 **Before using YOLOv8 , copy the following files from auxiliary/yolov8 and overwrite the original yolov8 files.**
 
-
+[!IMPORTANT] 
 1. auxiliary/yolov8/predict.py --> ultralytics/models/yolo/segment/predict.py
 2. auxiliary/yolov8/ops.py --> ultralytics/utils/ops.py
-3. ultralytics/yolov8/results.py --> ultralytics/engine/results.py
+3. auxiliary/yolov8/results.py --> ultralytics/engine/results.py
 
 
 
@@ -254,4 +254,20 @@ Generates job files and runs those jobs. All the no. of trials are equally distr
 
 
 Running the above script generates multiple job files (as no. of gpus provided in the argument) containing only one python script running multiple trials for each of the job. This python file also runs each of the jobs that were created as part of the script
+
+
+## Run in docker:
+
+To run the docker image, follow the below instructions while being within the repository:
+
+1. To build a docker image with the anaconda environment run the below command
+```
+docker build -t tb-seg .
+```
+tb-seg is the docker image name
+    
+2. To then finally run the outputs generated from docker and then mount those outputs to local disk volume, run the following:
+```
+docker run -v $(pwd)/output:/classification_results.csv tb-seg
+```
 

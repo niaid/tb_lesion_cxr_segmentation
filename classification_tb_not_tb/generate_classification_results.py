@@ -1,20 +1,175 @@
 import os
 import glob
 import json
+import torch
+import monai
 import numpy as np
 import pandas as pd
 import SimpleITK as sitk
+import pydicom
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
-from segment_lung_cxr.inference.inference_lung_segment import (
-    _read_image,
-    _load_model,
-    _predict_mask,
-)
 import argparse
 import math
 import multiprocessing as mp
 from functools import partial
+import tempfile
+from monai.transforms import Compose, AsDiscrete, Activations
+from monai.transforms import (
+    LoadImaged,
+    Resized,
+    NormalizeIntensityd,
+    RepeatChanneld,
+    EnsureChannelFirstd,
+    ScaleIntensityd,
+)
+from monai.data import list_data_collate, decollate_batch, DataLoader
+from monai.inferers import sliding_window_inference
+
+
+def _srgb2gray(image):
+    # Convert sRGB image to gray scale and rescale results to [0,255]
+    channels = [
+        sitk.VectorIndexSelectionCast(image, i, sitk.sitkFloat32)
+        for i in range(image.GetNumberOfComponentsPerPixel())
+    ]
+    # linear mapping
+    gray_image = (
+        1 / 255.0 * (0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2])
+    )
+    # nonlinear gamma correction
+    gray_image = (
+        gray_image * sitk.Cast(gray_image <= 0.0031308, sitk.sitkFloat32) * 12.92
+        + gray_image ** (1 / 2.4)
+        * sitk.Cast(gray_image > 0.0031308, sitk.sitkFloat32)
+        * 1.055
+        - 0.055
+    )
+    return sitk.Cast(sitk.RescaleIntensity(gray_image), sitk.sitkUInt8)
+
+
+def _read_image(file):
+    try:
+        org_img = sitk.ReadImage(file)
+    except:  # noqa E722
+        ds = pydicom.dcmread(file)
+        org_img = sitk.GetImageFromArray(
+            ds.pixel_array, isVector=(len(ds.pixel_array.shape) == 3)
+        )
+    # Some images have a 3rd dimension of size 1, get rid of it.
+    if org_img.GetDimension() != 2 and org_img.GetSize()[2] == 1:
+        org_img = org_img[:, :, 0]
+    # Some images are grayscale but the channel is repeated three times
+    # (gray RGB image).
+    if org_img.GetNumberOfComponentsPerPixel() > 1:
+        org_img = _srgb2gray(org_img)
+
+    return org_img
+
+
+def _load_model(lung_segment_model_path):
+    """
+    Load model from the pretrained lung segmentation model path
+    Args:
+        lung_segment_model_path(pathlib.Path): Pretrained Lung segmentation
+                                               model path
+    Returns:
+       model(torch.nn.Module): Model architecture
+       device(torch.device): Device to test the model on
+    """
+
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    model = torch.jit.load(str(lung_segment_model_path), map_location=device)
+    model.eval()
+
+    return model, device
+
+
+def _predict_mask(file_path, model, device, model_input_size, threshold=0.5):
+    """
+    Predict the lung mask from the resampled image array. This function uses
+    trained segmentation models(torch) to segment lungs for a given image with
+    size equal to model input size.
+    Args:
+        resampled_image_arr (numpy array): Numpy array obtained from resampled
+                                           images to provide input for
+                                           segmentation network in the
+                                           shape of (num_images,
+                                                     segmentation_input_size_x,
+                                                     segmentation_input_size_y)
+        model (torch.nn.Module): Lung Segmentation model.
+        device(torch.device): Device to test the model on.
+        model_input_size(int): Model input
+        batch_size: Batch size for the model. Performing inference in batch
+                    mode is faster than image by image.
+    Returns:
+        pred_masks(numpy array): Prediction masks of segmented lungs with same
+                                  size as input array.
+    """
+    original_img = _read_image(file_path)
+
+    temp_file = tempfile.NamedTemporaryFile(suffix=".nrrd", delete=False)
+    temp_filename = temp_file.name
+
+    sitk.WriteImage(original_img, temp_filename)
+
+    post_trans = Compose([Activations(sigmoid=True), AsDiscrete(threshold=threshold)])
+    test_transforms = Compose(
+        [
+            LoadImaged(keys=["img"]),
+            EnsureChannelFirstd(keys=["img"]),
+            Resized(keys=["img"], spatial_size=model_input_size, mode=("bilinear")),
+            RepeatChanneld(keys=["img"], repeats=3),
+            ScaleIntensityd(keys=["img"]),
+            NormalizeIntensityd(
+                keys=["img"],
+                subtrahend=[0.485, 0.456, 0.406],
+                divisor=[0.229, 0.224, 0.225],
+                channel_wise=True,
+            ),
+        ]
+    )
+
+    test_files = [{"img": temp_filename}]
+    test_ds = monai.data.Dataset(data=test_files, transform=test_transforms)
+
+    test_loader = DataLoader(
+        test_ds,
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        collate_fn=list_data_collate,
+        pin_memory=torch.cuda.is_available(),
+    )
+    with torch.no_grad():
+        test_data = next(iter(test_loader))
+        test_image = test_data["img"].to(device)
+        roi_size = (96, 96)
+        sw_batch_size = 4
+        pred_mask = sliding_window_inference(test_image, roi_size, sw_batch_size, model)
+        pred = post_trans(decollate_batch(pred_mask)[0])
+        pred_mask = np.transpose(pred[1].cpu().numpy(), [1, 0]).astype(np.int32)
+    pred_mask = sitk.GetImageFromArray(pred_mask)
+    new_spacing = [
+        sz * spc / nsz
+        for nsz, sz, spc in zip(
+            original_img.GetSize(), pred_mask.GetSize(), pred_mask.GetSpacing()
+        )
+    ]
+    pred_mask_original_size = sitk.Resample(
+        pred_mask,
+        original_img.GetSize(),
+        sitk.Transform(),
+        sitk.sitkNearestNeighbor,
+        original_img.GetOrigin(),
+        new_spacing,
+        original_img.GetDirection(),
+        0,
+        sitk.sitkUInt8,
+    )
+
+    temp_file.close()
+    return pred_mask_original_size
 
 
 def plot_confusion_matrix(pred_labels, ref_labels, output_confusion_matrix_filename):
@@ -52,7 +207,7 @@ def get_pred_label(filtered_tb_mask_within_lungs, threshold=1):
     Outputs:
         "TB"/"NOT_TB": Preodcted label.
     """
-    if sum(sitk.GetArrayFromImage(filtered_tb_mask_within_lungs)) >= threshold:
+    if np.sum(sitk.GetArrayFromImage(filtered_tb_mask_within_lungs)) >= threshold:
         return "TB"
     else:
         return "NOT_TB"
@@ -316,7 +471,10 @@ def write_overlayed_images(ref_not_tb_pred_tb_dir, img_file, pred_file):
     ]  # Set color to red where mask is present
 
     plt.imsave(
-        os.path.join(ref_not_tb_pred_tb_dir, img_file.split("/")[-1]) + ".png",
+        os.path.join(
+            ref_not_tb_pred_tb_dir, os.path.splitext(os.path.basename(img_file))[0]
+        )
+        + "_overlayed.png",
         overlaid_image.astype(np.uint8),
     )
 
@@ -343,12 +501,14 @@ def plot_fn_fp_tiles(
         p.starmap(
             func,
             zip(
-                ref_not_tb_pred_tb["processed_Filename"].tolist(),
-                ref_not_tb_pred_tb["pred_tb_seg_file"].tolist(),
+                ref_not_tb_pred_tb["filename"].tolist(),
+                ref_not_tb_pred_tb["ensemble_pred_tb_seg_file"].tolist(),
             ),
         )
 
-    files = glob.glob(os.path.join(output_dir_to_save_overlayed_fp_images, "*"))
+    files = glob.glob(
+        os.path.join(output_dir_to_save_overlayed_fp_images, "*_overlayed.png")
+    )
 
     plot_tile_volume(
         files,
@@ -363,12 +523,14 @@ def plot_fn_fp_tiles(
         p.starmap(
             func,
             zip(
-                ref_tb_pred_not_tb["processed_Filename"].tolist(),
-                ref_tb_pred_not_tb["pred_tb_seg_file"].tolist(),
+                ref_tb_pred_not_tb["filename"].tolist(),
+                ref_tb_pred_not_tb["ensemble_pred_tb_seg_file"].tolist(),
             ),
         )
 
-    files = glob.glob(os.path.join(output_dir_to_save_overlayed_fn_images, "*"))
+    files = glob.glob(
+        os.path.join(output_dir_to_save_overlayed_fn_images, "*_overlayed.png")
+    )
 
     plot_tile_volume(
         files,
@@ -384,8 +546,8 @@ def main(argv=None):
     parser.add_argument(
         "input_csv_path",
         type=str,
-        help="Input CSV path containing column names as 'processed_Filename' and \
-            'Output_tb_seg_filename' and 'TB/NOT-TB' label which represent paths of  CXRs, their\
+        help="Input CSV path containing column names as 'filename' and \
+            'ensemble_pred_tb_seg_file' and 'TB/NOT-TB' label which represent paths of  CXRs, their\
              binary TB masks respectively and  their corresponding binary labels respectively.",
     )
 
@@ -403,27 +565,31 @@ def main(argv=None):
     parser.add_argument(
         "output_csv_filename",
         type=str,
-        help="Output CSV filename to save the column 'pred_tb_seg_file' along \
+        help="Output CSV filename to save the column 'ensemble_pred_tb_seg_file' along \
               with the initial columns in the input_csv_file",
     )
     parser.add_argument(
-        "num_pixels_threshold",
+        "--num_pixels_threshold",
         type=int,
+        default=1,
         help="Threshold for no. of pixels to classify as TB in tb segmentation within lungs.",
     )
     parser.add_argument(
-        "output_confusion_matrix_filename",
+        "--output_confusion_matrix_filename",
         type=str,
+        default="confusion_matrix.png",
         help="Filename for the output confusion matrix",
     )
     parser.add_argument(
-        "output_dir_to_save_fn_overlayed_images",
+        "--output_dir_to_save_fn_overlayed_images",
         type=str,
+        default=".",
         help="Output directory to save overlayed images",
     )
     parser.add_argument(
-        "output_dir_to_save_fp_overlayed_images",
+        "--output_dir_to_save_fp_overlayed_images",
         type=str,
+        default=".",
         help="Output directory to save overlayed images",
     )
     args = parser.parse_args()
@@ -434,8 +600,8 @@ def main(argv=None):
     df = pd.read_csv(args.input_csv_path)
 
     df["predicted_TB_NOT_TB"] = get_pred_labels(
-        df["processed_Filename"].tolist(),
-        df["pred_tb_seg_file"].tolist(),
+        df["filename"].tolist(),
+        df["ensemble_pred_tb_seg_file"].tolist(),
         args.lung_segmentation_model_path,
         lung_segmentation_model_info,
         threshold=args.num_pixels_threshold,
@@ -443,18 +609,19 @@ def main(argv=None):
 
     df.to_csv(args.output_csv_filename, index=False)
 
-    plot_confusion_matrix(
-        df["predicted_TB_NOT_TB"].tolist(),
-        df["TB_NOT_TB"].tolist(),
-        args.output_confusion_matrix_filename,
-    )
+    if "TB_NOT_TB" in df.columns:
+        plot_confusion_matrix(
+            df["predicted_TB_NOT_TB"].tolist(),
+            df["TB_NOT_TB"].tolist(),
+            args.output_confusion_matrix_filename,
+        )
 
-    plot_fn_fp_tiles(
-        df,
-        args.output_dir_to_save_overlayed_fn_images,
-        args.output_dir_to_save_overlayed_fp_images,
-        args.output_csv_filename,
-    )
+        plot_fn_fp_tiles(
+            df,
+            args.output_dir_to_save_fn_overlayed_images,
+            args.output_dir_to_save_fp_overlayed_images,
+            args.output_csv_filename,
+        )
 
 
 if __name__ == "__main__":

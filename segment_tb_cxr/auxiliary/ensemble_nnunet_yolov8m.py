@@ -2,14 +2,10 @@ import os
 import argparse
 import pandas as pd
 import SimpleITK as sitk
+import pydicom
 from ultralytics import YOLO
 import torch
 import numpy as np
-from segment_tb_cxr.unet_resnet18.inference.inference_tb_segment import (
-    _read_image,
-    file_path,
-    csv_path,
-)
 import sys
 import contextlib
 import io
@@ -26,6 +22,83 @@ an extra column name 'ensemble_pred_tb_seg_file' corresponding to the original
 filenames. The prediction in the output folder are generated with
 {filename}_ensemble_pred_seg.nrrd format.
 """
+
+
+def file_path(path):
+
+    if os.path.isfile(path):
+        return path
+    else:
+        raise argparse.ArgumentTypeError(
+            f"Invalid argument ({path}), not a file path or file does not exist."
+        )
+
+
+def csv_path(path, required_columns={"filename"}):
+    """
+    Define the csv_path type for use with argparse. Checks
+    that the given path string is a path to a csv file and that the
+    header of the csv file contains the required columns.
+    """
+
+    required_columns = set(required_columns)
+    if os.path.isfile(path):
+        try:  # only read the csv header
+            expected_columns_exist = required_columns.issubset(
+                set(pd.read_csv(path, nrows=0).columns.tolist())
+            )
+            if expected_columns_exist:
+                return path
+            else:
+                raise argparse.ArgumentTypeError(
+                    f"Invalid argument ({path}), does not contain all expected columns."
+                )
+        except UnicodeDecodeError:
+            raise argparse.ArgumentTypeError(
+                f"Invalid argument ({path}), not a csv file."
+            )
+    else:
+        raise argparse.ArgumentTypeError(f"Invalid argument ({path}), not a file.")
+
+
+def _srgb2gray(image):
+    # Convert sRGB image to gray scale and rescale results to [0,255]
+    channels = [
+        sitk.VectorIndexSelectionCast(image, i, sitk.sitkFloat32)
+        for i in range(image.GetNumberOfComponentsPerPixel())
+    ]
+    # linear mapping
+    gray_image = (
+        1 / 255.0 * (0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2])
+    )
+    # nonlinear gamma correction
+    gray_image = (
+        gray_image * sitk.Cast(gray_image <= 0.0031308, sitk.sitkFloat32) * 12.92
+        + gray_image ** (1 / 2.4)
+        * sitk.Cast(gray_image > 0.0031308, sitk.sitkFloat32)
+        * 1.055
+        - 0.055
+    )
+    return sitk.Cast(sitk.RescaleIntensity(gray_image), sitk.sitkUInt8)
+
+
+def _read_image(file):
+    try:
+        org_img = sitk.ReadImage(file)
+    except:  # noqa E722
+        ds = pydicom.dcmread(file)
+        org_img = sitk.GetImageFromArray(
+            ds.pixel_array, isVector=(len(ds.pixel_array.shape) == 3)
+        )
+    # Some images have a 3rd dimension of size 1, get rid of it.
+    if org_img.GetDimension() != 2 and org_img.GetSize()[2] == 1:
+        org_img = org_img[:, :, 0]
+    # Some images are grayscale but the channel is repeated three times
+    # (gray RGB image).
+    if org_img.GetNumberOfComponentsPerPixel() > 1:
+        org_img = _srgb2gray(org_img)
+
+    return org_img
 
 
 @contextlib.contextmanager
@@ -158,9 +231,7 @@ def gen_nnunet_prob_map(file, predictor):
     return nnunet_prob[1][0]
 
 
-def gen_ensembled_yolov8_nnunet_segmentation(
-    file, yolov8_prob_map, nnunet_prob_map, output_seg_folder, binary_threshold=0.5
-):
+def gen_ensembled_yolov8_nnunet_segmentation(file, yolov8_prob_map, nnunet_prob_map):
     """
     This function takes probability maps from YOLOv8 and nnU-Net, computes their mean to create an ensemble,
     and then applies a threshold to generate a binary segmentation mask. The resulting mask is saved
@@ -194,16 +265,7 @@ def gen_ensembled_yolov8_nnunet_segmentation(
 
     ensemble_nnunet_yolov8_prob_map_img.CopyInformation(original_img)
 
-    output_filename = os.path.join(
-        output_seg_folder,
-        os.path.splitext(os.path.basename(file))[0] + "_ensemble_pred_seg.nrrd",
-    )
-
-    sitk.WriteImage(
-        ensemble_nnunet_yolov8_prob_map_img > binary_threshold,
-        output_filename,
-        useCompression=True,
-    )
+    return ensemble_nnunet_yolov8_prob_map_img
 
 
 def main():
@@ -214,10 +276,16 @@ def main():
         help="Input CSV path with column filename",
     )
     parser.add_argument(
-        "yolov8_weights", type=file_path, help="Weights path for yolov8"
+        "yolov8_weights",
+        type=file_path,
+        default="segment_tb_cxr/yolov8/weights/yolov8.pt",
+        help="Weights path for yolov8",
     )
     parser.add_argument(
-        "nnunet_weights", type=file_path, help="Weights path for nnunet"
+        "nnunet_weights",
+        type=file_path,
+        default="segment_tb_cxr/nnunet/weights/fold_0/nnunet.pth",
+        help="Weights path for nnunet",
     )
     parser.add_argument(
         "output_seg_dir", type=str, help="output directory to save the images"
@@ -228,7 +296,7 @@ def main():
     parser.add_argument(
         "output_csv_path",
         type=str,
-        help="Output CSV path with column filename and ensemble_pred_tb_seg_file",
+        help="Output CSV path with column filename , ensemble_pred_tb_seg_file",
     )
     args = parser.parse_args()
 
@@ -257,12 +325,19 @@ def main():
         yolov8_prob_map = gen_yolov8_prob_map(file, yolov8_model)
         nnunet_prob_map = gen_nnunet_prob_map(file, predictor)
 
-        gen_ensembled_yolov8_nnunet_segmentation(
-            file,
-            yolov8_prob_map,
-            nnunet_prob_map,
+        ensemble_nnunet_yolov8_prob_map_img = gen_ensembled_yolov8_nnunet_segmentation(
+            file, yolov8_prob_map, nnunet_prob_map
+        )
+
+        output_filename = os.path.join(
             args.output_seg_dir,
-            args.binary_mask_threshold,
+            os.path.splitext(os.path.basename(file))[0] + "_ensemble_pred_seg.nrrd",
+        )
+
+        sitk.WriteImage(
+            ensemble_nnunet_yolov8_prob_map_img > args.binary_mask_threshold,
+            output_filename,
+            useCompression=True,
         )
 
     df["ensemble_pred_tb_seg_file"] = df["filename"].apply(

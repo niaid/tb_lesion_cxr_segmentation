@@ -1,7 +1,7 @@
 FROM continuumio/miniconda3
 
 # Set working directory
-WORKDIR .
+WORKDIR /
 
 # Install system build tools
 RUN apt-get update && apt-get install -y \

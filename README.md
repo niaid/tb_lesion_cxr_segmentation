@@ -266,8 +266,12 @@ docker build -t tb-seg .
 ```
 tb-seg is the docker image name
     
-2. To then finally run the outputs generated from docker and then mount those outputs to local disk volume, run the following:
+2. Run the outputs generated from the docker image
 ```
-docker run -v $(pwd)/output:/classification_results.csv tb-seg
+docker run --name container_name tb-seg
 ```
 
+2. Copy the outputs generated from the docker image to the local folder
+```
+docker cp container_name:/classification_results.csv .
+```

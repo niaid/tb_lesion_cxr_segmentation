@@ -13,7 +13,10 @@ RUN apt-get update && apt-get install -y \
 
 # Copy environment file and project files
 COPY environment-deployment.yml .
-COPY . .
+COPY classification_tb_not_tb  .
+COPY segment_tb_cxr .
+
+
 
 
 # Create environment
@@ -36,4 +39,4 @@ COPY segment_tb_cxr/auxiliary/yolov8/results.py /opt/conda/envs/tbenv/lib/python
 EXPOSE 8000
 
 # Run app
-CMD ["bash", "-c", "python -m segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m segment_tb_cxr/sample.csv segment_tb_cxr/yolov8/weights/yolov8.pt segment_tb_cxr/nnunet/weights/fold_0/nnunet.pth segment_tb_cxr/sample_seg --binary_mask_threshold 0.5 segment_tb_cxr/sample_nnunet_preds.csv && python -m classification_tb_not_tb.generate_classification_results segment_tb_cxr/sample_nnunet_preds.csv classification_tb_not_tb/resnet_unet_configuration.json classification_tb_not_tb/cxr_segment.pt classification_results.csv"]
+CMD ["bash", "-c", "python -m segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m segment_tb_cxr/sample.csv segment_tb_cxr/yolov8/weights/yolov8.pt segment_tb_cxr/nnunet/weights/fold_0/nnunet.pth --binary_mask_threshold 0.5 segment_tb_cxr/sample_nnunet_preds.csv --save_probability_seg_images && python -m classification_tb_not_tb.generate_classification_results segment_tb_cxr/sample_nnunet_preds.csv classification_tb_not_tb/resnet_unet_configuration.json classification_tb_not_tb/cxr_segment.pt classification_results.csv"]

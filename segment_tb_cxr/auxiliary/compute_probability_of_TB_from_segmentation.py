@@ -19,10 +19,8 @@ def compute_stats(probability_map):
     return np.min(probability_map), np.mean(probability_map), np.max(probability_map)
 
 
-def get_prob_of_tb(tb_pred_arr_npz_file, threshold=0.5):
+def get_prob_of_tb(probability_map, threshold=0.5):
 
-    # For all the models.
-    probability_map = sitk.GetArrayFromImage(sitk.ReadImage(tb_pred_arr_npz_file))
     filtered_tb_probabilities = probability_map[probability_map > threshold]
 
     if len(filtered_tb_probabilities) == 0:
@@ -59,8 +57,8 @@ def main():
             "probabilty_of_tb_from_max_overall",
         ]
     ] = pd.DataFrame(
-        df["nnunet_yolov8_cropped_pred_img_filenames"]
-        .apply(lambda x: get_prob_of_tb(x))
+        df["pred_tb_probability_arr_file_path"]
+        .apply(lambda x: get_prob_of_tb(sitk.GetArrayFromImage(sitk.ReadImage(x))))
         .tolist(),
         index=df.index,
     )

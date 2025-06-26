@@ -25,6 +25,9 @@ from monai.transforms import (
 )
 from monai.data import list_data_collate, decollate_batch, DataLoader
 from monai.inferers import sliding_window_inference
+from segment_tb_cxr.auxiliary.compute_probability_of_TB_from_segmentation import (
+    get_prob_of_tb,
+)
 
 
 def _srgb2gray(image):
@@ -196,26 +199,31 @@ def plot_confusion_matrix(pred_labels, ref_labels, output_confusion_matrix_filen
     plt.savefig(output_confusion_matrix_filename)
 
 
-def get_pred_label(filtered_tb_mask_within_lungs, threshold=1):
+def get_probability_and_prediction_label(
+    filtered_probability_tb_segmentation_within_lungs, threshold_for_TB
+):
     """
-    Return the predicted label if the lung regions contains atleast min. threshold \
-    pixels of segmented tb.
+    Return the predicted label the the probability computed from the image is greater than the
+    user provided threshold
     Inputs:
-        filtered_tb_mask_within_lungs(sitk.Image): SimpleITK image with intensection
+        filtered_probability_tb_segmentation_within_lungs(sitk.Image): SimpleITK image with intersection
                                                      of lung regions and the tb segmented regions.
-        threshold(int): Minimum pixels to qualify a given image contains "TB" or not.
+        threshold_for_TB(int): user given threshold to qualify a given image contains "TB" or not.
     Outputs:
-        "TB"/"NOT_TB": Preodcted label.
+        "TB"/"NOT_TB": Predicted label.
     """
-    if np.sum(sitk.GetArrayFromImage(filtered_tb_mask_within_lungs)) >= threshold:
-        return "TB"
+    probability_for_TB = get_prob_of_tb(
+        sitk.GetArrayFromImage(filtered_probability_tb_segmentation_within_lungs)
+    )[1]
+    if probability_for_TB >= threshold_for_TB:
+        return probability_for_TB, "TB"
     else:
-        return "NOT_TB"
+        return probability_for_TB, "NOT_TB"
 
 
 def generate_tb_masks_within_lungs(
     original_img_path,
-    predicted_segmentation_path,
+    predicted_probability_segmentation_path,
     lung_segmentation_model,
     device,
     model_info,
@@ -226,17 +234,20 @@ def generate_tb_masks_within_lungs(
     regions and the lung segmented masks.
     Inputs:
         original_img_path(string): Path for the image.
-        predicted_segmentation_path(string ): Path for the predicted segmentation file.
+        tb_contours(list of lists ): List of all tb contours per image
         lung_segmentation_model(torch.nn.Module): loaded torch lung segmentation model.
         device(torch.Device): torch device. CUDA enabled GPU or cpu
         model_info(dict): Model dictionary for lung segmentation model to use the trained
                           lung segmentation model information to preprocess.
     Outputs:
-        filtered_tb_mask_within_lungs(sitk.Image): SimpleITK image with intensection
-                                                     of lung regions and the tb segmented regions.
+        filtered_probability_tb_segmentation_within_lungs(sitk.Image): SimpleITK image with intensection
+                                                     of lung regions and the probability tb segmented regions.
     """
-    predicted_tb_segmentation = _read_image(predicted_segmentation_path)
-    lung_segmentation_model
+
+    predicted_probability_tb_segmentation = _read_image(
+        predicted_probability_segmentation_path
+    )
+
     predicted_lung_mask = _predict_mask(
         original_img_path,
         lung_segmentation_model,
@@ -244,52 +255,64 @@ def generate_tb_masks_within_lungs(
         model_input_size=model_info["img_size"],
     )
 
-    predicted_lung_mask.SetSpacing(predicted_tb_segmentation.GetSpacing())
-    predicted_tb_segmentation = sitk.Cast(predicted_tb_segmentation, sitk.sitkUInt8)
+    predicted_lung_mask.SetSpacing(_read_image(original_img_path).GetSpacing())
+    predicted_lung_mask = sitk.Cast(predicted_lung_mask, sitk.sitkFloat32)
+    # Filter tb probability based image within lungs
+    filtered_probability_tb_segmentation_within_lungs = (
+        predicted_lung_mask * predicted_probability_tb_segmentation
+    )
 
-    # Filter tb masks within lungs
-    filtered_tb_mask_within_lungs = predicted_lung_mask * predicted_tb_segmentation
-
-    return filtered_tb_mask_within_lungs
+    return filtered_probability_tb_segmentation_within_lungs
 
 
-def get_pred_labels(
+def get_probabilities_and_prediction_labels(
     original_img_paths,
-    predicted_segmentation_paths,
+    predicted_probability_segmentation_paths,
     lung_segmentation_model_path,
     model_info,
-    threshold=1,
+    threshold_for_TB=1,
 ):
     """
     Generate predicted "TB"/"NOT_TB" labels using the lung segmentation model and
     the predicted tb segmentation file.
     Inputs:
         original_img_paths(list): Path for the original image paths.
-        predicted_segmentation_paths(list): List of predicted segmentation paths.
+        tb_contours(list of lists): List of all tb contours for all the images
         lung_segmentation_model(torch.nn.Module): loaded torch lung segmentation model.
         device(torch.Device): torch device. CUDA enabled GPU or cpu
         model_info(dict): Model dictionary for lung segmentation model to use the trained
                           lung segmentation model information to preprocess.
-        threshold(int): Minimum pixels to qualify a given image contains "TB" or not.
+        threshold_for_TB(int): user given threshold to qualify a given image contains "TB" or not.
     Outputs:
         pred_tb_labels(list): List of predicted "TB"/"NOT_TB" labels
     """
     pred_tb_labels = []
     model, device = _load_model(lung_segmentation_model_path)
-    for original_img_path, predicted_segmentation_path in zip(
-        original_img_paths, predicted_segmentation_paths
+    probabilities_for_TB = []
+
+    for original_img_path, predicted_probability_segmentation_path in zip(
+        original_img_paths,
+        predicted_probability_segmentation_paths,
     ):
-        filtered_tb_mask_within_lungs = generate_tb_masks_within_lungs(
-            original_img_path, predicted_segmentation_path, model, device, model_info
+
+        filtered_probability_tb_segmentation_within_lungs = (
+            generate_tb_masks_within_lungs(
+                original_img_path,
+                predicted_probability_segmentation_path,
+                model,
+                device,
+                model_info,
+            )
         )
 
-        pred_tb_label = get_pred_label(
-            filtered_tb_mask_within_lungs, threshold=threshold
+        probability_for_TB, pred_tb_label = get_probability_and_prediction_label(
+            filtered_probability_tb_segmentation_within_lungs,
+            threshold_for_TB=threshold_for_TB,
         )
-
+        probabilities_for_TB.append(probability_for_TB)
         pred_tb_labels.append(pred_tb_label)
 
-    return pred_tb_labels
+    return probabilities_for_TB, pred_tb_labels
 
 
 def process_image(img, projection_axis, thumbnail_size):
@@ -547,7 +570,7 @@ def main(argv=None):
         "input_csv_path",
         type=str,
         help="Input CSV path containing column names as 'filename' and \
-            'ensemble_pred_tb_seg_file' and 'TB/NOT-TB' label which represent paths of  CXRs, their\
+            'ensemble_probability_pred_tb_seg_file' and 'TB/NOT-TB' label which represent paths of  CXRs, their\
              binary TB masks respectively and  their corresponding binary labels respectively.",
     )
 
@@ -569,10 +592,10 @@ def main(argv=None):
               with the initial columns in the input_csv_file",
     )
     parser.add_argument(
-        "--num_pixels_threshold",
+        "--decision_for_TB",
         type=int,
-        default=1,
-        help="Threshold for no. of pixels to classify as TB in tb segmentation within lungs.",
+        default=0.79336864,
+        help="Threshold to classify as TB within lungs.",
     )
     parser.add_argument(
         "--output_confusion_matrix_filename",
@@ -599,13 +622,16 @@ def main(argv=None):
 
     df = pd.read_csv(args.input_csv_path)
 
-    df["predicted_TB_NOT_TB"] = get_pred_labels(
+    probs, labels = get_probabilities_and_prediction_labels(
         df["filename"].tolist(),
-        df["ensemble_pred_tb_seg_file"].tolist(),
+        df["ensemble_probability_pred_tb_seg_file"].tolist(),
         args.lung_segmentation_model_path,
         lung_segmentation_model_info,
-        threshold=args.num_pixels_threshold,
+        threshold_for_TB=args.decision_for_TB,
     )
+
+    df["probability_for_TB"] = probs
+    df["predicted_decision_for_TB_NOT_TB"] = labels
 
     df.to_csv(args.output_csv_filename, index=False)
 

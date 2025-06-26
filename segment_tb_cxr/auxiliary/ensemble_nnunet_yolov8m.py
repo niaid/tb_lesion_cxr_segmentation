@@ -10,6 +10,7 @@ import sys
 import contextlib
 import io
 import warnings
+import cv2
 
 """
 This script generates probability maps from YOLOv8 and nnU-Net models,
@@ -288,7 +289,9 @@ def main():
         help="Weights path for nnunet",
     )
     parser.add_argument(
-        "output_seg_dir", type=str, help="output directory to save the images"
+        "--save_probability_seg_images",
+        action="store_true",
+        help="If set, save the predicted images containing probabilities for each pixel in the current directory.",
     )
     parser.add_argument(
         "--binary_mask_threshold", type=float, default=0.5, help="Binary mask threshold"
@@ -299,9 +302,6 @@ def main():
         help="Output CSV path with column filename , ensemble_pred_tb_seg_file",
     )
     args = parser.parse_args()
-
-    if not os.path.exists(args.output_seg_dir):
-        os.makedirs(args.output_seg_dir)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -321,6 +321,7 @@ def main():
 
     df = pd.read_csv(args.input_csv_path)
 
+    tb_contours = []
     for file in df["filename"].tolist():
         yolov8_prob_map = gen_yolov8_prob_map(file, yolov8_model)
         nnunet_prob_map = gen_nnunet_prob_map(file, predictor)
@@ -329,23 +330,38 @@ def main():
             file, yolov8_prob_map, nnunet_prob_map
         )
 
-        output_filename = os.path.join(
-            args.output_seg_dir,
-            os.path.splitext(os.path.basename(file))[0] + "_ensemble_pred_seg.nrrd",
+        if args.save_probability_seg_images:
+            output_filename = os.path.join(
+                ".",
+                os.path.splitext(os.path.basename(file))[0]
+                + "_ensemble_probability_pred_seg.nrrd",
+            )
+
+            sitk.WriteImage(
+                ensemble_nnunet_yolov8_prob_map_img,
+                output_filename,
+                useCompression=True,
+            )
+
+        contours = cv2.findContours(
+            sitk.GetArrayFromImage(
+                ensemble_nnunet_yolov8_prob_map_img > args.binary_mask_threshold
+            ),
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE,
+        )
+        tb_contours.append([[arr.tolist() for arr in row] for row in contours])
+
+    if args.save_probability_seg_images:
+        df["ensemble_probability_pred_tb_seg_file"] = df["filename"].apply(
+            lambda x: os.path.join(
+                ".",
+                os.path.splitext(os.path.basename(x))[0]
+                + "_ensemble_probability_pred_seg.nrrd",
+            )
         )
 
-        sitk.WriteImage(
-            ensemble_nnunet_yolov8_prob_map_img > args.binary_mask_threshold,
-            output_filename,
-            useCompression=True,
-        )
-
-    df["ensemble_pred_tb_seg_file"] = df["filename"].apply(
-        lambda x: os.path.join(
-            args.output_seg_dir,
-            os.path.splitext(os.path.basename(x))[0] + "_ensemble_pred_seg.nrrd",
-        )
-    )
+    df["tb_contours"] = tb_contours
     df.to_csv(args.output_csv_path, index=False)
 
 

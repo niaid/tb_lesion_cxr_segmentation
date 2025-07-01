@@ -11,8 +11,17 @@ import cv2
 import os
 import argparse
 import json
-from segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m import gen_yolov8_prob_map, gen_nnunet_prob_map, gen_ensembled_yolov8_nnunet_segmentation
-from classification_tb_not_tb.generate_classification_results import _load_model, generate_tb_masks_within_lungs, get_probability_and_prediction_label
+from segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m import (
+    gen_yolov8_prob_map,
+    gen_nnunet_prob_map,
+    gen_ensembled_yolov8_nnunet_segmentation,
+)
+from classification_tb_not_tb.generate_classification_results import (
+    _load_model,
+    generate_tb_masks_within_lungs,
+    get_probability_and_prediction_label,
+)
+
 
 @contextlib.contextmanager
 def suppress_stdout():
@@ -31,6 +40,7 @@ with suppress_stdout():
 
 warnings.filterwarnings("ignore")
 
+
 def dir_path(path):
     if os.path.isdir(path):
         return path
@@ -38,7 +48,8 @@ def dir_path(path):
         raise argparse.ArgumentTypeError(
             f"Invalid argument ({path}), not a directory path or directory does not exist."
         )
-   
+
+
 def file_path(path):
 
     if os.path.isfile(path):
@@ -47,7 +58,8 @@ def file_path(path):
         raise argparse.ArgumentTypeError(
             f"Invalid argument ({path}), not a file path or file does not exist."
         )
-       
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -85,7 +97,10 @@ def main():
               with the  columns in the files, decision_for_TB and probability_for_TB",
     )
     parser.add_argument(
-        "--binary_mask_threshold", type=float, default=0.5, help="Binary mask threshold for TB segmentation"
+        "--binary_mask_threshold",
+        type=float,
+        default=0.5,
+        help="Binary mask threshold for TB segmentation",
     )
     parser.add_argument(
         "--decision_for_TB",
@@ -95,45 +110,44 @@ def main():
     )
 
     args = parser.parse_args()
- 
+
     with open(str(args.lung_segmentation_model_info_json_path)) as f:
         lung_segmentation_model_info = json.load(f)
-        
+
     lung_seg_model, device = _load_model(args.lung_segmentation_model_path)
-    
+
     # Inititalize YOLOv8 model
     yolov8_model = YOLO(args.yolov8_weights, verbose=False)
     yolov8_model.to(device)
-    
+
     # Initialize nnUNet model and silence the progress bar to be consistent with YOLO behavior.
     predictor = nnUNetPredictor(device=torch.device(device), allow_tqdm=False)
-        
-    
+
     # Directory in nnunet/weights has a sub folder named fold_X where X is arbitrary. Here '0' is used.
     predictor.initialize_from_trained_model_folder(
         os.path.dirname(os.path.dirname(args.nnunet_weights)),
         checkpoint_name=os.path.basename(args.nnunet_weights),
         use_folds=(0,),
     )
-    
-    files = glob.glob(os.path.join(args.input_directory,'*'))
-    df = pd.DataFrame({'file':files})
-    
+
+    files = glob.glob(os.path.join(args.input_directory, "*"))
+    df = pd.DataFrame({"file": files})
+
     tb_contours = []
     probabilities_for_TB = []
-    pred_tb_labels= []
+    pred_tb_labels = []
     for file in files:
-        
+
         # Get the TB predictions per pixel from YOLOv8 model
-        yolov8_prob_map = gen_yolov8_prob_map(file, yolov8_model)        
+        yolov8_prob_map = gen_yolov8_prob_map(file, yolov8_model)
         # Get the TB predictions per pixel from nnUNetv2 model
         nnunet_prob_map = gen_nnunet_prob_map(file, predictor)
-    
+
         # Get ensemble of predictions from both the model predictions above
         ensemble_nnunet_yolov8_prob_map_img = gen_ensembled_yolov8_nnunet_segmentation(
             file, yolov8_prob_map, nnunet_prob_map
         )
-    
+
         # Get TB contours from ensemble image
         contours, _ = cv2.findContours(
             sitk.GetArrayFromImage(
@@ -163,11 +177,10 @@ def main():
         probabilities_for_TB.append(probability_for_TB)
         pred_tb_labels.append(pred_tb_label)
 
-        
-    df['tb_contours'] = tb_contours
+    df["tb_contours"] = tb_contours
     df["probability_for_TB"] = probabilities_for_TB
     df["predicted_decision_for_TB_NOT_TB"] = pred_tb_labels
-           
+
     df.to_csv(args.output_csv_filename, index=False)
 
 

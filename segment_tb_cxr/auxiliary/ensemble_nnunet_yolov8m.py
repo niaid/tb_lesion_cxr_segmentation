@@ -328,8 +328,7 @@ def main():
 
         output_filename = os.path.join(
             args.output_seg_dir,
-            os.path.splitext(os.path.basename(file))[0]
-            + "_ensemble_pred_seg.nrrd",
+            os.path.splitext(os.path.basename(file))[0] + "_ensemble_pred_seg.nrrd",
         )
 
         sitk.WriteImage(

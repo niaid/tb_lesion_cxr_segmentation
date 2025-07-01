@@ -290,7 +290,9 @@ def get_probabilities_and_prediction_labels(
         original_img_paths,
         predicted_probability_segmentation_paths,
     ):
-        predicted_probability_segmentation_img = _read_image(predicted_probability_segmentation_path)
+        predicted_probability_segmentation_img = _read_image(
+            predicted_probability_segmentation_path
+        )
         filtered_probability_tb_segmentation_within_lungs = (
             generate_tb_masks_within_lungs(
                 original_img_path,

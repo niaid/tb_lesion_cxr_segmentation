@@ -266,12 +266,12 @@ docker build -t tb-seg .
 ```
 tb-seg is the docker image name
     
-2. Run the outputs generated from the docker image
+2. User needs to store all input images into sample_inputs and mount them onto docker image with a sample container name.
 ```
-docker run --name container_name tb-seg
+docker run --name container_name -v ./sample_inputs:/sample_inputs -w / tb-seg python -m classification_tb_not_tb.ensemble_nnunet_yolov8m_tb_not_tb sample_inputs segment_tb_cxr/yolov8/weights/yolov8.pt segment_tb_cxr/nnunet/weights/fold_0/nnunet.pth classification_tb_not_tb/lung_cxr_segmentation/segment_lung_cxr/training/resnet_unet_configuration.json classification_tb_not_tb/lung_cxr_segmentation/segment_lung_cxr/data/weights/cxr_segment.pt sample_preds.csv
 ```
 
 2. Copy the outputs generated from the docker image to the local folder
 ```
-docker cp container_name:/classification_results.csv .
+docker cp container_name:/sample_preds.csv .
 ```

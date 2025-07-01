@@ -11,13 +11,33 @@ RUN apt-get update && apt-get install -y \
     libgl1-mesa-glx \
     libglib2.0-0
 
+# Create the subdirectories for the files so the imports within python script work as expected
+RUN mkdir -p classification_tb_not_tb
+
+RUN mkdir -p segment_tb_cxr/auxiliary
+
+RUN mkdir -p segment_tb_cxr/yolov8/weights
+
+RUN mkdir -p segment_tb_cxr/nnunet/weights/fold_0/
+
 # Copy environment file and project files
 COPY environment-deployment.yml .
-COPY classification_tb_not_tb  .
-COPY segment_tb_cxr .
 
+COPY classification_tb_not_tb/ classification_tb_not_tb/
 
+COPY segment_tb_cxr/auxiliary/ensemble_nnunet_yolov8m.py segment_tb_cxr/auxiliary/ensemble_nnunet_yolov8m.py
 
+COPY segment_tb_cxr/auxiliary/ensemble_nnunet_yolov8m_tb_not_tb.py segment_tb_cxr/auxiliary/ensemble_nnunet_yolov8m_tb_not_tb.py
+
+COPY segment_tb_cxr/auxiliary/compute_probability_of_TB_from_segmentation.py segment_tb_cxr/auxiliary/compute_probability_of_TB_from_segmentation.py
+
+COPY segment_tb_cxr/yolov8/weights/yolov8.pt segment_tb_cxr/yolov8/weights/yolov8.pt
+
+COPY segment_tb_cxr/nnunet/weights/fold_0/nnunet.pth  segment_tb_cxr/nnunet/weights/fold_0/nnunet.pth
+
+COPY segment_tb_cxr/nnunet/weights/dataset.json segment_tb_cxr/nnunet/weights/dataset.json
+
+COPY segment_tb_cxr/nnunet/weights/plans.json segment_tb_cxr/nnunet/weights/plans.json
 
 # Create environment
 RUN conda env create -f environment-deployment.yml
@@ -39,4 +59,4 @@ COPY segment_tb_cxr/auxiliary/yolov8/results.py /opt/conda/envs/tbenv/lib/python
 EXPOSE 8000
 
 # Run app
-CMD ["bash", "-c", "python -m segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m segment_tb_cxr/sample.csv segment_tb_cxr/yolov8/weights/yolov8.pt segment_tb_cxr/nnunet/weights/fold_0/nnunet.pth --binary_mask_threshold 0.5 segment_tb_cxr/sample_nnunet_preds.csv --save_probability_seg_images && python -m classification_tb_not_tb.generate_classification_results segment_tb_cxr/sample_nnunet_preds.csv classification_tb_not_tb/resnet_unet_configuration.json classification_tb_not_tb/cxr_segment.pt classification_results.csv"]
+CMD ["bash", "-c", "python -m classification_tb_not_tb.ensemble_nnunet_yolov8m_tb_not_tb sample_inputs segment_tb_cxr/yolov8/weights/yolov8.pt segment_tb_cxr/nnunet/weights/fold_0/nnunet.pth classification_tb_not_tb/lung_cxr_segmentation/segment_lung_cxr/training/resnet_unet_configuration.json classification_tb_not_tb/lung_cxr_segmentation/segment_lung_cxr/data/weights/cxr_segment.pt sample_preds.csv"]

@@ -1,0 +1,3 @@
+[submodule "classification_tb_not_tb/lung_cxr_segmentation"]
+	path = classification_tb_not_tb/lung_cxr_segmentation
+	url = git@github.com:niaid/lung_cxr_segmentation.git

@@ -223,7 +223,7 @@ def get_probability_and_prediction_label(
 
 def generate_tb_masks_within_lungs(
     original_img_path,
-    predicted_probability_segmentation_path,
+    predicted_probability_segmentation_img,
     lung_segmentation_model,
     device,
     model_info,
@@ -234,7 +234,7 @@ def generate_tb_masks_within_lungs(
     regions and the lung segmented masks.
     Inputs:
         original_img_path(string): Path for the image.
-        tb_contours(list of lists ): List of all tb contours per image
+        predicted_probability_segmentation_img(SimpleITK.Image): SimpleITK image containing TB probabilities per pixel
         lung_segmentation_model(torch.nn.Module): loaded torch lung segmentation model.
         device(torch.Device): torch device. CUDA enabled GPU or cpu
         model_info(dict): Model dictionary for lung segmentation model to use the trained
@@ -243,10 +243,6 @@ def generate_tb_masks_within_lungs(
         filtered_probability_tb_segmentation_within_lungs(sitk.Image): SimpleITK image with intensection
                                                      of lung regions and the probability tb segmented regions.
     """
-
-    predicted_probability_tb_segmentation = _read_image(
-        predicted_probability_segmentation_path
-    )
 
     predicted_lung_mask = _predict_mask(
         original_img_path,
@@ -259,7 +255,7 @@ def generate_tb_masks_within_lungs(
     predicted_lung_mask = sitk.Cast(predicted_lung_mask, sitk.sitkFloat32)
     # Filter tb probability based image within lungs
     filtered_probability_tb_segmentation_within_lungs = (
-        predicted_lung_mask * predicted_probability_tb_segmentation
+        predicted_lung_mask * predicted_probability_segmentation_img
     )
 
     return filtered_probability_tb_segmentation_within_lungs
@@ -294,11 +290,11 @@ def get_probabilities_and_prediction_labels(
         original_img_paths,
         predicted_probability_segmentation_paths,
     ):
-
+        predicted_probability_segmentation_img = _read_image(predicted_probability_segmentation_path)
         filtered_probability_tb_segmentation_within_lungs = (
             generate_tb_masks_within_lungs(
                 original_img_path,
-                predicted_probability_segmentation_path,
+                predicted_probability_segmentation_img,
                 model,
                 device,
                 model_info,

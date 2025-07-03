@@ -11,12 +11,12 @@ import cv2
 import os
 import argparse
 import json
-from segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m import (
+from ensemble_nnunet_yolov8m import (
     gen_yolov8_prob_map,
     gen_nnunet_prob_map,
     gen_ensembled_yolov8_nnunet_segmentation,
 )
-from classification_tb_not_tb.generate_classification_results import (
+from generate_classification_results import (
     _load_model,
     generate_tb_masks_within_lungs,
     get_probability_and_prediction_label,
@@ -97,10 +97,9 @@ def main():
               with the  columns in the files, decision_for_TB and probability_for_TB",
     )
     parser.add_argument(
-        "--binary_mask_threshold",
-        type=float,
-        default=0.5,
-        help="Binary mask threshold for TB segmentation",
+        "--save_tb_segmentation",
+        action="store_true",
+        help="Save tb segmentation within the user given directory",
     )
     parser.add_argument(
         "--decision_for_TB",
@@ -131,11 +130,12 @@ def main():
     )
 
     files = glob.glob(os.path.join(args.input_directory, "*"))
-    df = pd.DataFrame({"file": files})
+    df = pd.DataFrame({"Image": files})
 
     tb_contours = []
     probabilities_for_TB = []
     pred_tb_labels = []
+    seg_files = []
     for file in files:
 
         # Get the TB predictions per pixel from YOLOv8 model
@@ -148,16 +148,6 @@ def main():
             file, yolov8_prob_map, nnunet_prob_map
         )
 
-        # Get TB contours from ensemble image
-        contours, _ = cv2.findContours(
-            sitk.GetArrayFromImage(
-                ensemble_nnunet_yolov8_prob_map_img > args.binary_mask_threshold
-            ),
-            cv2.RETR_EXTERNAL,
-            cv2.CHAIN_APPROX_SIMPLE,
-        )
-        tb_contours.append([cnt.reshape(-1, 2).tolist() for cnt in contours])
-
         # Get filtered tb image with probabilities that is just within lung regions.
         filtered_probability_tb_segmentation_within_lungs = (
             generate_tb_masks_within_lungs(
@@ -169,6 +159,30 @@ def main():
             )
         )
 
+        if args.save_tb_segmentation:
+            output_filename = os.path.join(
+                args.input_directory,
+                os.path.splitext(os.path.basename(file))[0]
+                + "_predicted_segmentation.nrrd",
+            )
+
+            sitk.WriteImage(
+                filtered_probability_tb_segmentation_within_lungs > 0.5,
+                output_filename,
+                useCompression=True,
+            )
+            seg_files.append(output_filename)
+
+        # Get TB contours from ensemble image
+        contours, _ = cv2.findContours(
+            sitk.GetArrayFromImage(
+                filtered_probability_tb_segmentation_within_lungs > 0.5
+            ),
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE,
+        )
+        tb_contours.append([cnt.reshape(-1, 2).tolist() for cnt in contours])
+
         # Get probability of TB and prediction label (TB/NOT_TB)from the above obtained filtered tb image.
         probability_for_TB, pred_tb_label = get_probability_and_prediction_label(
             filtered_probability_tb_segmentation_within_lungs,
@@ -177,9 +191,12 @@ def main():
         probabilities_for_TB.append(probability_for_TB)
         pred_tb_labels.append(pred_tb_label)
 
-    df["tb_contours"] = tb_contours
-    df["probability_for_TB"] = probabilities_for_TB
-    df["predicted_decision_for_TB_NOT_TB"] = pred_tb_labels
+    if args.save_tb_segmentation:
+        df["predicted_tb_segmentation_files"] = seg_files
+
+    df["TB Lesion Contours"] = tb_contours
+    df["TB Score"] = probabilities_for_TB
+    df["Prediction"] = pred_tb_labels
 
     df.to_csv(args.output_csv_filename, index=False)
 

@@ -266,12 +266,14 @@ docker build -t tb-seg .
 ```
 tb-seg is the docker image name
     
-2. User needs to store all input images into sample_inputs and mount them onto docker image with a sample container name.
+2. User needs to store all input images into a directory('inputs') in the code below and mount them onto docker image with a sample container name.
 ```
-docker run --name container_name -v ./sample_inputs:/sample_inputs -w / tb-seg python -m classification_tb_not_tb.ensemble_nnunet_yolov8m_tb_not_tb sample_inputs segment_tb_cxr/yolov8/weights/yolov8.pt segment_tb_cxr/nnunet/weights/fold_0/nnunet.pth classification_tb_not_tb/lung_cxr_segmentation/segment_lung_cxr/training/resnet_unet_configuration.json classification_tb_not_tb/lung_cxr_segmentation/segment_lung_cxr/data/weights/cxr_segment.pt sample_preds.csv
+docker run -v ./sample_inputs:/inputs tb-seg
 ```
 
-2. Copy the outputs generated from the docker image to the local folder
+The command above generates a CSV file with columns: 'Image', 'TB Lesion Contours', 'TB Score', and 'Prediction', representing filenames, lesion coordinates, TB probability, and TB/NOT_TB classification.
+
+To also save predicted segmentation masks to the mounted directory, run the following command:
 ```
-docker cp container_name:/sample_preds.csv .
+docker run -e EXTRA_ARGS="--save_tb_segmentation" -v ./sample_inputs:/inputs tb-seg
 ```

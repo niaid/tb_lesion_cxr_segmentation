@@ -25,7 +25,7 @@ from monai.transforms import (
 )
 from monai.data import list_data_collate, decollate_batch, DataLoader
 from monai.inferers import sliding_window_inference
-from segment_tb_cxr.auxiliary.compute_probability_of_TB_from_segmentation import (
+from compute_probability_of_TB_from_segmentation import (
     get_prob_of_tb,
 )
 

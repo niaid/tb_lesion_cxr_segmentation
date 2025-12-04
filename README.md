@@ -1,7 +1,13 @@
 # TB lesion segmentation in Chest X Rays
-This folder contains contents that are useful to segment "TB lesions"  in X - rays by semantic segmentation.
+This repository contains code for segmenting TB lesions in frontal chest X-rays, semantic segmentation.
 
 The segmentation models are developed using UNet (with Resnet18 as encoder architecture initialized with 'imagenet' weights) , YOLOv8(m- Initialized with pretrained 'coco' weights) and nnUNet
+
+## How to Cite
+
+Algorithmic details and performance evaluation are described in:
+
+K. Kantipudi, V. Bui, H. Yu, Y.M.F. Lure, S. Jaeger, Z. Yaniv, "Semantic segmentation of TB in chest x-rays: a new dataset and generalization evaluation", Proc. SPIE 13407, Medical Imaging: Computer-Aided Diagnosis, 134073L, 2025. doi:[10.1117/12.3047222](https://doi.org/10.1117/12.3047222).
 
 ## Install the requirements:
 

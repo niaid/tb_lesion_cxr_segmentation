@@ -121,39 +121,38 @@ def filter_df(df, wanted_findings):
     df (pd.DataFrame): Dataframe filtered with user wanted findings
     """
 
-    for i, (findings_list, boxes, scores_list) in enumerate(
+    for i, (idx, findings_list, boxes, scores_list) in enumerate(
         zip(
+            df.index,
             df["Predicted Disease for Each ROI"],
             df["Locations of Boundary for Each ROI"],
             df["PredictedScores"],
         )
     ):
-        # Identify indices of unwanted findings
-        indices_to_remove = [
+        # Identify indices of findings that are in the wanted_findings list
+        indices_to_keep = [
             index
             for index, finding in enumerate(findings_list)
             if finding in wanted_findings
         ]
 
-        # Filter findings, boxes and  scores based on indices
+        # Filter findings, boxes and scores based on indices
         filtered_findings = [
             finding
             for index, finding in enumerate(findings_list)
-            if index in indices_to_remove
+            if index in indices_to_keep
         ]
         filtered_boxes = [
-            box for index, box in enumerate(boxes) if index in indices_to_remove
+            box for index, box in enumerate(boxes) if index in indices_to_keep
         ]
         filtered_scores = [
-            score
-            for index, score in enumerate(scores_list)
-            if index in indices_to_remove
+            score for index, score in enumerate(scores_list) if index in indices_to_keep
         ]
 
-        # Update DataFrame
-        df.loc[i, "Predicted Disease for Each ROI"] = str(filtered_findings)
-        df.loc[i, "Locations of Boundary for Each ROI"] = str(filtered_boxes)
-        df.loc[i, "PredictedScores"] = str(filtered_scores)
+        # Update DataFrame using actual index
+        df.loc[idx, "Predicted Disease for Each ROI"] = str(filtered_findings)
+        df.loc[idx, "Locations of Boundary for Each ROI"] = str(filtered_boxes)
+        df.loc[idx, "PredictedScores"] = str(filtered_scores)
 
     df["Predicted Disease for Each ROI"] = df["Predicted Disease for Each ROI"].apply(
         lambda x: eval(x)
@@ -193,7 +192,8 @@ def main():
     )
     parser.add_argument(
         "abnormality_list",
-        type=list,
+        type=str,
+        nargs="+",
         help="Abnormality list to filter the abnormalities from the zhying's annotations and \
               save the images pertaining only to these abnormalities. All the abnormalities\
               will be saved with label 1 in the output directory",
@@ -201,7 +201,7 @@ def main():
 
     args = parser.parse_args()
 
-    zhying_df = pd.read_csv(args.input_csv_path)
+    zhying_df = pd.read_csv(args.input_csv_path_zhying)
 
     # Find full paths from zhying annotations file
     zhying_df["processed_Filename"] = zhying_df.apply(
@@ -211,14 +211,15 @@ def main():
         lambda x: str(
             pathlib.Path(args.input_cxr_dir)
             / (x["PatientID"] + "_" + pathlib.Path(x["processed_Filename"]).name)
-        )
+        ),
+        axis=1,
     )
     zhying_df["Locations of Boundary for Each ROI"] = zhying_df[
         "Locations of Boundary for Each ROI"
     ].apply(lambda x: eval(x))
     zhying_df["PredictedScores"] = zhying_df["PredictedScores"].apply(lambda x: eval(x))
 
-    outlier_info_df = pd.read_csv(args.input_csv_path_clinical_info)
+    outlier_info_df = pd.read_csv(args.input_csv_path_outlier_info)
     outlier_info_df["processed_Filename"] = outlier_info_df[
         "series_instance_content_url"
     ].apply(lambda x: str(pathlib.Path(args.input_cxr_dir) / x))

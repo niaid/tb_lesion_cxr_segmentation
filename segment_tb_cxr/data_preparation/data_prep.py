@@ -7,50 +7,6 @@ import pathlib
 from skimage.draw import polygon
 
 
-def find_full_path(data_root, row):
-    """
-    Zhying's annotation file contains patient id and filename (with jpeg extension) columns.
-    Using these columns we find the full path between the provided data_root and the
-    filename. Not all files in the tb portals dataset have .dcm extension.
-
-    Args:
-    ------
-    data_root (str): Root directory of the TB Portals Chest X Rays.
-    row(pandas.core.series.Series): Dataframe row containing columns 'Filename' and
-                                    'PatientID'
-
-    Returns:
-    ------
-    full path of the chest x ray filename within the aspera dataset.
-    """
-
-    if (
-        len(
-            list(
-                (data_root / pathlib.Path(row["PatientID"])).rglob(
-                    str(row["Filename"].split(".jpeg")[0] + ".dcm")
-                )
-            )
-        )
-        > 0
-    ):
-        return str(
-            list(
-                (data_root / pathlib.Path(row["PatientID"])).rglob(
-                    str(row["Filename"].split(".jpeg")[0] + ".dcm")
-                )
-            )[0]
-        )
-    else:
-        return str(
-            list(
-                (data_root / pathlib.Path(row["PatientID"])).rglob(
-                    str(row["Filename"].split(".jpeg")[0])
-                )
-            )[0]
-        )
-
-
 def polygons_to_label_image(roi_list, image_size, background_value=0, label_value=1):
     """
     Args:
@@ -194,30 +150,40 @@ def main():
         "abnormality_list",
         type=str,
         nargs="+",
-        help="Abnormality list to filter the abnormalities from the zhying's annotations and \
+        help='Abnormality list to filter the abnormalities from the zhying\'s annotations and \
               save the images pertaining only to these abnormalities. All the abnormalities\
-              will be saved with label 1 in the output directory",
+              will be saved with label 1 in the output directory. \
+              Pass each finding as a separate quoted string e.g. \
+              "Secondary Pulmonary Tuberculosis" "Pleural Effusion"',
     )
 
     args = parser.parse_args()
+
+    args.abnormality_list = [
+        item.strip().strip("[]\"'")
+        for item in args.abnormality_list
+        if item.strip().strip("[]\"'")
+    ]
 
     zhying_df = pd.read_csv(args.input_csv_path_zhying)
 
     # Find full paths from zhying annotations file
     zhying_df["processed_Filename"] = zhying_df.apply(
-        lambda x: find_full_path(args.input_cxr_dir, x), axis=1
+        lambda x: str(pathlib.Path(args.input_cxr_dir) / x["Filename"]), axis=1
     )
     zhying_df["Output_seg_filename"] = zhying_df.apply(
         lambda x: str(
-            pathlib.Path(args.input_cxr_dir)
+            pathlib.Path(args.output_dir)
             / (x["PatientID"] + "_" + pathlib.Path(x["processed_Filename"]).name)
         ),
         axis=1,
     )
-    zhying_df["Locations of Boundary for Each ROI"] = zhying_df[
-        "Locations of Boundary for Each ROI"
-    ].apply(lambda x: eval(x))
-    zhying_df["PredictedScores"] = zhying_df["PredictedScores"].apply(lambda x: eval(x))
+    cols_to_parse = [
+        "Predicted Disease for Each ROI",
+        "Locations of Boundary for Each ROI",
+        "PredictedScores",
+    ]
+    zhying_df[cols_to_parse] = zhying_df[cols_to_parse].applymap(eval)
 
     outlier_info_df = pd.read_csv(args.input_csv_path_outlier_info)
     outlier_info_df["processed_Filename"] = outlier_info_df[
@@ -231,7 +197,7 @@ def main():
     # Remove outlier files
     df = merged_zhying_outlier_info_df[
         merged_zhying_outlier_info_df["cxr_outlier"] != "outlier"
-    ]
+    ].copy()
 
     # Filter labels with the user provided abnormality_list.
     filtered_df = filter_df(df, wanted_findings=args.abnormality_list)

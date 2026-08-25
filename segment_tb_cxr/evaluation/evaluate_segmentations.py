@@ -16,6 +16,15 @@ Code based on the SimpleITK Segmentation Evaluation Jupyter notebook.
 """
 
 
+def _compute_metrics_from_images(reference_image, pred_image):
+    overlap_measures_filter = sitk.LabelOverlapMeasuresImageFilter()
+    overlap_measures_filter.Execute(reference_image, pred_image)
+    return {
+        "dice": overlap_measures_filter.GetDiceCoefficient(),
+        "jaccard": overlap_measures_filter.GetJaccardCoefficient(),
+    }
+
+
 def _compute_metrics(reference_file, pred_file):
     """
 
@@ -34,18 +43,10 @@ def _compute_metrics(reference_file, pred_file):
           ---
 
     """
-
-    overlap_measures_filter = sitk.LabelOverlapMeasuresImageFilter()
-
-    reference_segmentation = sitk.ReadImage(reference_file)
-    seg = sitk.ReadImage(pred_file)
-
-    overlap_measures_filter.Execute(reference_segmentation, seg)
-
-    return {
-        "dice": overlap_measures_filter.GetDiceCoefficient(),
-        "jaccard": overlap_measures_filter.GetJaccardCoefficient(),
-    }
+    return _compute_metrics_from_images(
+        sitk.ReadImage(reference_file),
+        sitk.ReadImage(pred_file),
+    )
 
 
 def main(argv=None):

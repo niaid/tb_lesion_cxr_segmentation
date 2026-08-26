@@ -6,7 +6,7 @@ import argparse
 import multiprocessing
 
 """
-This script computes various Overlap results from the
+This script computes overlap and surface distance results from the
 reference and the predicted binary masks by the segmentation model. User has to
 provide the input CSV filename with column names 'Output_tb_seg_filename' and
 'pred_tb_seg_file' with each representing the filepaths for reference and

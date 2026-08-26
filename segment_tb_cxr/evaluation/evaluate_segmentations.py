@@ -1,15 +1,15 @@
 import numpy as np
 import pandas as pd
 import SimpleITK as sitk
-import pathlib
 import argparse
 import multiprocessing
-from segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m import csv_path
+from segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m import file_path
+
 """
 This script computes overlap and surface distance results from the
 reference and the predicted binary masks by the segmentation model. User has to
-provide the input CSV filename with column names 'reference_tb_seg_file' and 'pred_tb_seg_file' with each representing the filepaths for reference and
-the corresponding predicted binary masks respectively.
+provide the input CSV filename with column names 'reference_tb_seg_file' and 'pred_tb_seg_file' with
+each representing the filepaths for reference and the corresponding predicted binary masks respectively.
 Code based on the SimpleITK Segmentation Evaluation Jupyter notebook.
 (https://github.com/InsightSoftwareConsortium/SimpleITK-Notebooks/blob/master/Python/34_Segmentation_Evaluation.ipynb)
 """
@@ -108,7 +108,7 @@ def main(argv=None):
 
     parser.add_argument(
         "input_csv_path",
-        type=str,
+        type=file_path,
         help="Input CSV path containing column names as \
              'reference_tb_seg_file' and 'pred_tb_seg_file' representing the \
              filepaths for the label file and predicted segmentation files \
@@ -122,9 +122,12 @@ def main(argv=None):
 
     args = parser.parse_args()
 
-    csv_path(args.input_csv_path, required_columns=["reference_tb_seg_file", "pred_tb_seg_file"])
-    
     df = pd.read_csv(args.input_csv_path)
+    required_columns = set(["reference_tb_seg_file", "pred_tb_seg_file"])
+    if not required_columns.issubset(set(df.columns.tolist())):
+        parser.error(
+            f"{args.input_csv_path} is missing columns: {required_columns - set(df.columns)}"
+        )
 
     with multiprocessing.Pool(30) as p:
         results = p.starmap(

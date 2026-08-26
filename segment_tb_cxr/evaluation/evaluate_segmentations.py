@@ -4,12 +4,11 @@ import SimpleITK as sitk
 import pathlib
 import argparse
 import multiprocessing
-
+from segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m import csv_path
 """
 This script computes overlap and surface distance results from the
 reference and the predicted binary masks by the segmentation model. User has to
-provide the input CSV filename with column names 'Output_tb_seg_filename' and
-'pred_tb_seg_file' with each representing the filepaths for reference and
+provide the input CSV filename with column names 'reference_tb_seg_file' and 'pred_tb_seg_file' with each representing the filepaths for reference and
 the corresponding predicted binary masks respectively.
 Code based on the SimpleITK Segmentation Evaluation Jupyter notebook.
 (https://github.com/InsightSoftwareConsortium/SimpleITK-Notebooks/blob/master/Python/34_Segmentation_Evaluation.ipynb)
@@ -82,7 +81,7 @@ def _compute_metrics(reference_file, prediction_file):
 
     This function computes  Overlap and Surface Distance metrics from reference
     files and predicted segmentation files.Input CSV path must have column
-    names of 'Output_tb_seg_filename' and 'pred_tb_seg_file'\
+    names of 'reference_tb_seg_file' and 'pred_tb_seg_file'\
     with each column representing the reference segmentation and the corresponding
     predicted segmentation file respectively.
     ''
@@ -109,9 +108,9 @@ def main(argv=None):
 
     parser.add_argument(
         "input_csv_path",
-        type=pathlib.Path,
+        type=str,
         help="Input CSV path containing column names as \
-             'Output_tb_seg_filename' and 'pred_tb_seg_file' representing the \
+             'reference_tb_seg_file' and 'pred_tb_seg_file' representing the \
              filepaths for the label file and predicted segmentation files \
              respectively.",
     )
@@ -122,12 +121,15 @@ def main(argv=None):
     )
 
     args = parser.parse_args()
+
+    csv_path(args.input_csv_path, required_columns=["reference_tb_seg_file", "pred_tb_seg_file"])
+    
     df = pd.read_csv(args.input_csv_path)
 
     with multiprocessing.Pool(30) as p:
         results = p.starmap(
             _compute_metrics,
-            zip(df["Output_tb_seg_filename"].tolist(), df["pred_tb_seg_file"].tolist()),
+            zip(df["reference_tb_seg_file"].tolist(), df["pred_tb_seg_file"].tolist()),
         )
 
     df = pd.DataFrame(results)

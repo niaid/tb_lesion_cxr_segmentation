@@ -61,18 +61,27 @@ def _load_state_dict(predictor, state_dict):
         predictor.network.load_state_dict(stripped)
 
 
-def _prune(state_dict, percentile, all_abs):
+def _prune(state_dict, param_keys, percentile, all_abs):
     """Zero weights whose absolute value falls below the given global percentile."""
     threshold = float(np.percentile(all_abs, percentile))
     pruned = {
-        k: (v * (v.abs() >= threshold) if v.is_floating_point() else v)
+        k: (
+            v * (v.abs() >= threshold)
+            if v.is_floating_point() and k in param_keys
+            else v
+        )
         for k, v in state_dict.items()
     }
-    total_float = sum(t.numel() for t in state_dict.values() if t.is_floating_point())
+    total_float = sum(
+        t.numel()
+        for k, t in state_dict.items()
+        if k in param_keys and t.is_floating_point()
+    )
+
     n_zero = sum(
         (pruned[k] == 0).sum().item()
         for k in pruned
-        if state_dict[k].is_floating_point()
+        if k in param_keys and state_dict[k].is_floating_point()
     )
     return pruned, threshold, n_zero / total_float
 
@@ -172,18 +181,26 @@ def main():
 
     checkpoint = torch.load(args.weights_path, map_location="cpu", weights_only=False)
     orig_sd = checkpoint.get("network_weights", checkpoint)
-    total_params = sum(t.numel() for t in orig_sd.values() if t.is_floating_point())
+
+    predictor = _build_predictor(weights_folder, checkpoint_name, device)
+
+    param_keys = {name for name, _ in predictor.network.named_parameters()}
     # tensors are on CPU (map_location="cpu"); cast to float32 for bfloat16 compatibility
     float_tensors = [
-        t.float().abs().numpy().ravel()
-        for t in orig_sd.values()
-        if t.is_floating_point()
+        t.float().abs().detach().cpu().numpy().ravel()
+        for k, t in orig_sd.items()
+        if k in param_keys and t.is_floating_point()
     ]
+
     if not float_tensors:
         parser.error("Checkpoint contains no floating-point tensors — cannot prune.")
     all_abs = np.concatenate(float_tensors)
 
-    predictor = _build_predictor(weights_folder, checkpoint_name, device)
+    total_params = sum(
+        t.numel()
+        for k, t in orig_sd.items()
+        if k in param_keys and t.is_floating_point()
+    )
 
     baseline_scores = _dice_scores(
         predictor, image_files, ref_files, args.binary_mask_threshold
@@ -199,7 +216,7 @@ def main():
     while high - low > args.convergence_tolerance:
         mid = (low + high) / 2.0
         step += 1
-        pruned_sd, thr, sparsity = _prune(orig_sd, mid, all_abs)
+        pruned_sd, thr, sparsity = _prune(orig_sd, param_keys, mid, all_abs)
         _load_state_dict(predictor, pruned_sd)
 
         pruned_scores = _dice_scores(
@@ -226,7 +243,9 @@ def main():
     _load_state_dict(predictor, orig_sd)
 
     # Final evaluation on the most aggressively pruned model that met the constraint
-    pruned_sd, best_thr, best_sparsity = _prune(orig_sd, best_percentile, all_abs)
+    pruned_sd, best_thr, best_sparsity = _prune(
+        orig_sd, param_keys, best_percentile, all_abs
+    )
     _load_state_dict(predictor, pruned_sd)
     pruned_scores = _dice_scores(
         predictor, image_files, ref_files, args.binary_mask_threshold

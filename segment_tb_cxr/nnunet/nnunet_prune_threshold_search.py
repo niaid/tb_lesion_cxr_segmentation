@@ -53,12 +53,17 @@ def _build_predictor(weights_folder, checkpoint_name, device):
 
 
 def _load_state_dict(predictor, state_dict):
-    """Load state dict into the predictor network, handling torch.compile prefix."""
-    try:
-        predictor.network.load_state_dict(state_dict)
-    except RuntimeError:
-        stripped = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
-        predictor.network.load_state_dict(stripped)
+    """
+    Inference does not use predictor.network; at each predict call, the predictor
+    reloads weights from predictor.list_of_parameters[fold] into a fresh network,
+    so anything set on predictor.network is discarded. Weights must go into
+    list_of_parameters (one state dict per fold) to affect the evaluated model.
+    """
+    net_keys = set(predictor.network.state_dict().keys())
+    if not set(state_dict.keys()).issubset(net_keys):
+        state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
+    for i in range(len(predictor.list_of_parameters)):
+        predictor.list_of_parameters[i] = state_dict
 
 
 def _prune(state_dict, param_keys, percentile, all_abs):
@@ -202,6 +207,7 @@ def main():
         if k in param_keys and t.is_floating_point()
     )
 
+    _load_state_dict(predictor, orig_sd)
     baseline_scores = _dice_scores(
         predictor, image_files, ref_files, args.binary_mask_threshold
     )

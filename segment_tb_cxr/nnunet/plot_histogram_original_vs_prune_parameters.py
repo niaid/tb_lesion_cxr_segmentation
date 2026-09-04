@@ -1,24 +1,24 @@
 import argparse
-import contextlib
-import io
 import matplotlib.pyplot as plt
 import pathlib
 import numpy as np
 import torch
-from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 from segment_tb_cxr.auxiliary.ensemble_nnunet_yolov8m import file_path
-
-
-def get_param_keys(model_folder, checkpoint_name, device):
-    predictor = nnUNetPredictor(device=torch.device(device), allow_tqdm=False)
-    with contextlib.redirect_stdout(io.StringIO()):
-        predictor.initialize_from_trained_model_folder(
-            model_folder, checkpoint_name=checkpoint_name, use_folds=(0,)
-        )
-    return {name for name, _ in predictor.network.named_parameters()}
+from segment_tb_cxr.nnunet.nnunet_prune_threshold_search import _build_predictor
 
 
 def extract_float_parameters(checkpoint_path, param_keys, device):
+    """
+    Extract floating-point parameters from a checkpoint.
+
+    Args:
+        checkpoint_path (str): Path to the model checkpoint.
+        param_keys (list): List of parameter keys to extract.
+        device (torch.device): Device to map the checkpoint to.
+
+    Returns:
+        np.ndarray: Flattened array of extracted floating-point parameters.
+    """
     ck = torch.load(checkpoint_path, map_location=device, weights_only=False)
     state_dict = ck.get("network_weights", ck)
 
@@ -30,34 +30,40 @@ def extract_float_parameters(checkpoint_path, param_keys, device):
         ]
     )
 
-    n_nonzero = sum(
-        torch.count_nonzero(t).item()
-        for k, t in state_dict.items()
-        if k in param_keys and t.is_floating_point()
-    )
-
-    return params, n_nonzero
+    return params
 
 
-def plot_histograms(
-    before_params, after_params, output_dir, bins, zoom_threshold, zoom_bins
+def plot_histogram(
+    original_model_params,
+    pruned_model_params,
+    output_path,
+    bins,
+    xlim=None,
 ):
+    """
+    Plot a single histogram of model parameters before and after pruning.
 
-    all_values = np.concatenate([before_params, after_params])
-    bin_edges = np.histogram_bin_edges(all_values, bins=bins)
-
+    Args:
+        original_model_params (np.ndarray): Parameters of the original model.
+        pruned_model_params (np.ndarray): Parameters of the pruned model.
+        output_path (str or pathlib.Path): Path to save the output plot.
+        bins (int or array-like): Number of bins, or bin edges, for the histogram.
+        xlim (tuple, optional): If provided, sets the X-axis limits as (min, max).
+    """
     fig, ax = plt.subplots(figsize=(12, 6))
+    all_values = np.concatenate([original_model_params, pruned_model_params])
+    bin_count = np.histogram_bin_edges(all_values, bins=bins)
     ax.hist(
-        after_params,
-        bins=bin_edges,
+        pruned_model_params,
+        bins=bin_count,
         linewidth=3.0,
         color="orange",
         label="pruned",
         alpha=0.5,
     )
     ax.hist(
-        before_params,
-        bins=bin_edges,
+        original_model_params,
+        bins=bin_count,
         linewidth=1.5,
         linestyle="--",
         color="blue",
@@ -65,41 +71,8 @@ def plot_histograms(
         alpha=0.5,
     )
     ax.set_yscale("log")
-    ax.set_xlabel("Weight Value")
-    ax.set_ylabel("Frequency")
-    leg = ax.legend()
-    for lh in leg.legend_handles:
-        lh.set_alpha(1.0)
-    fig.tight_layout()
-    fig.savefig(
-        str(pathlib.Path(output_dir) / "parameter_histogram.pdf"),
-        dpi=150,
-        bbox_inches="tight",
-    )
-    plt.close(fig)
-
-    before_zoomed = before_params[np.abs(before_params) <= zoom_threshold]
-    after_zoomed = after_params[np.abs(after_params) <= zoom_threshold]
-    zoomed_bin_edges = np.histogram_bin_edges(before_zoomed, bins=zoom_bins)
-
-    fig, ax = plt.subplots(figsize=(12, 6))
-    ax.hist(
-        after_zoomed,
-        bins=zoomed_bin_edges,
-        linewidth=3.0,
-        color="orange",
-        label="pruned",
-        alpha=0.5,
-    )
-    ax.hist(
-        before_zoomed,
-        bins=zoomed_bin_edges,
-        color="blue",
-        label="original",
-        alpha=0.5,
-    )
-    ax.set_yscale("log")
-    ax.set_xlim([-zoom_threshold, zoom_threshold])
+    if xlim is not None:
+        ax.set_xlim(xlim)
     ax.set_xlabel("Weight Value")
     ax.set_ylabel("Frequency")
     ax.tick_params(axis="both", which="major", labelsize=10)
@@ -107,11 +80,7 @@ def plot_histograms(
     for lh in leg.legend_handles:
         lh.set_alpha(1.0)
     fig.tight_layout()
-    fig.savefig(
-        str(pathlib.Path(output_dir) / "parameter_histogram_zoomed.pdf"),
-        dpi=150,
-        bbox_inches="tight",
-    )
+    fig.savefig(str(output_path), dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -157,26 +126,37 @@ def main():
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    param_keys = get_param_keys(
+    predictor = _build_predictor(
         pathlib.Path(args.original_weights_path).parent.parent,
-        checkpoint_name=pathlib.Path(args.original_weights_path).name,
-        device=device,
+        pathlib.Path(args.original_weights_path).name,
+        device,
     )
+    param_keys = {name for name, _ in predictor.network.named_parameters()}
 
-    before_params, n_nonzero_before = extract_float_parameters(
+    original_model_params = extract_float_parameters(
         args.original_weights_path, param_keys, device
     )
-    after_params, n_nonzero_after = extract_float_parameters(
+    pruned_model_params = extract_float_parameters(
         args.pruned_weights_path, param_keys, device
     )
 
-    plot_histograms(
-        before_params,
-        after_params,
-        output_dir=pathlib.Path(args.output_dir),
+    # Plot histograms of original vs pruned model parameters
+    plot_histogram(
+        original_model_params,
+        pruned_model_params,
+        output_path=str(pathlib.Path(args.output_dir) / "parameter_histogram.pdf"),
         bins=args.bins,
-        zoom_threshold=args.zoom_threshold,
-        zoom_bins=args.zoom_bins,
+    )
+
+    # Plot histograms of original vs pruned model parameters zoomed in around zero
+    plot_histogram(
+        original_model_params[np.abs(original_model_params) <= args.zoom_threshold],
+        pruned_model_params[np.abs(pruned_model_params) <= args.zoom_threshold],
+        output_path=str(
+            pathlib.Path(args.output_dir) / "parameter_histogram_zoomed.pdf"
+        ),
+        bins=args.zoom_bins,
+        xlim=[-args.zoom_threshold, args.zoom_threshold],
     )
 
 

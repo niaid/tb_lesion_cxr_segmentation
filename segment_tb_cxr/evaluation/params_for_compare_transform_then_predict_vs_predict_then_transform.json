@@ -1,0 +1,141 @@
+{
+  "train": {
+  "preprocessing_settings": {
+    "transforms": [
+      {
+        "class": "CustomLoadImaged",
+        "kwargs": {},
+        "keys": ["img","seg","img_original"]
+      },
+      {
+        "class": "Resized",
+        "kwargs": {
+          "spatial_size": [512, 640],
+          "mode": ["bilinear","nearest","bilinear"]
+        },
+        "keys": ["img","seg","img_original"]
+      },
+      {
+        "class": "ScaleIntensityd",
+        "kwargs": {},
+        "keys": ["img","img_original"]
+      },
+      {
+        "class": "NormalizeIntensityd",
+        "kwargs": {},
+        "keys": ["img","img_original"]
+      }
+    ]
+  },
+  "data_augmentation_settings": {
+    "transforms": [
+      {
+        "class": "RandRotated",
+        "kwargs": {
+          "prob": 0.2,
+          "range_x": [-0.523598776, 0.523598776],
+          "mode": ["bilinear","nearest"],
+          "padding_mode": "zeros"
+        },
+        "keys":["img","seg"]
+      },
+      {
+        "class": "RandZoomd",
+        "kwargs": {
+          "prob": 0.2,
+          "min_zoom": 0.7,  "max_zoom": 1.4,
+          "mode": ["bilinear","nearest"],
+          "padding_mode": "constant",
+          "keep_size": true
+        },
+        "keys":["img","seg"]
+      },
+      {
+        "class": "RandGaussianNoised",
+        "kwargs": {
+          "prob": 0.1,
+          "mean": 0.0,
+          "std": 0.31622776601683794,
+          "sample_std": true
+        },
+        "keys": ["img"]
+      },
+      {
+        "class": "RandGaussianSmoothd",
+        "kwargs": {
+          "prob": 0.2,
+          "sigma_x": [0.5, 1.0],
+          "sigma_y": [0.5, 1.0]
+        },
+        "keys": ["img"]
+      },
+      {
+        "class": "RandScaleIntensityd",
+        "kwargs": {
+          "prob": 0.15,
+          "factors": [-0.25, 0.25]
+        },
+        "keys": ["img"]
+      },
+      {
+        "class": "RandScaleIntensityFixedMeand",
+        "kwargs": {
+          "prob": 0.15,
+          "factors": [-0.25, 0.25],
+          "fixed_mean": true,
+          "preserve_range": true
+        },
+        "keys": ["img"]
+      },
+      {
+        "class": "RandSimulateLowResolutiond",
+        "kwargs": {
+          "prob": 0.25,
+          "zoom_range": [0.5, 1.0],
+          "downsample_mode": "nearest",
+          "upsample_mode": "bilinear",
+          "align_corners": false
+        },
+        "keys": ["img"]
+      },
+      {
+        "class": "RandAdjustContrastd",
+        "kwargs": {
+          "prob": 0.1,
+          "gamma": [0.7, 1.5],
+          "invert_image": true,
+          "retain_stats": true
+        },
+        "keys": ["img"]
+      },
+      {
+        "class": "RandAdjustContrastd",
+        "kwargs": {
+          "prob": 0.3,
+          "gamma": [0.7, 1.5],
+          "invert_image": false,
+          "retain_stats": true
+        },
+        "keys": ["img"]
+      },
+      {
+        "class": "RandFlipd",
+        "kwargs": {
+          "prob": 0.5,
+          "spatial_axis": 0
+        },
+        "keys": ["img", "seg"]
+      }
+    ]
+  },
+  "post_augmentation_settings": {
+    "transforms": [
+      {
+        "class": "EnsureTyped",
+        "kwargs": {},
+        "keys": ["img","seg"]
+      }
+    ]
+  }
+}
+}

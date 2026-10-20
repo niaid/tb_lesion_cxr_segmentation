@@ -6,7 +6,7 @@ Final results on the validation set:
 
 ```
 Baseline | params=174,117,264 | dice=0.86±0.20
-Pruned   | params=20,258,145  | dice=0.85±0.20 
+Pruned   | params=60,322,114  | dice=0.84±0.21 
 
-threshold=8.17e-03 | sparsity=88.37%
+threshold=3.76e-03 | sparsity=65.36%
 ```

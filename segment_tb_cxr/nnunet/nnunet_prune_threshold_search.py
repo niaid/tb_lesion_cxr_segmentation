@@ -4,7 +4,8 @@ Binary search for the maximum weight-pruning percentile such that fewer than
 compared to the unpruned model. Saves the pruned checkpoint alongside the original.
 
 Usage:
-    python -m segment_tb_cxr.nnunet.nnunet_prune_threshold_search <input_csv> <weights_path> \\
+    python -m segment_tb_cxr.nnunet.nnunet_prune_threshold_search \\
+        <input_csv> <weights_path> \\
         [--image_file_column filename] \\
         [--reference_file_column ref_seg_filename] \\
         [--pair_dice_reduction_threshold 0.05] [--pair_fail_fraction 0.10] \\
@@ -14,6 +15,7 @@ Usage:
 
 import argparse
 import contextlib
+import copy
 import io
 from pathlib import Path
 
@@ -66,29 +68,22 @@ def _load_state_dict(predictor, state_dict):
         predictor.list_of_parameters[i] = state_dict
 
 
-def _prune(state_dict, param_keys, percentile, all_abs):
-    """Zero weights whose absolute value falls below the given global percentile."""
+def _prune(pruned_sd, orig_sd, param_keys, percentile, all_abs):
+    """
+    Reset pruned_sd's parameters to orig_sd, then zero weights whose absolute value
+    falls below the given global percentile. Works in place so tensors aliased
+    within the state dict keep sharing storage when it is saved.
+    """
     threshold = float(np.percentile(all_abs, percentile))
-    pruned = {
-        k: (
-            v * (v.abs() >= threshold)
-            if v.is_floating_point() and k in param_keys
-            else v
-        )
-        for k, v in state_dict.items()
-    }
-    total_float = sum(
-        t.numel()
-        for k, t in state_dict.items()
-        if k in param_keys and t.is_floating_point()
-    )
-
-    n_zero = sum(
-        (pruned[k] == 0).sum().item()
-        for k in pruned
-        if k in param_keys and state_dict[k].is_floating_point()
-    )
-    return pruned, threshold, n_zero / total_float
+    total_float = n_zero = 0
+    with torch.no_grad():
+        for k, v in pruned_sd.items():
+            if k in param_keys and v.is_floating_point():
+                v.copy_(orig_sd[k])
+                v.masked_fill_(v.abs() < threshold, 0)
+                total_float += v.numel()
+                n_zero += (v == 0).sum().item()
+    return threshold, n_zero / total_float
 
 
 def _dice_scores(predictor, image_files, ref_files, mask_threshold):
@@ -186,6 +181,8 @@ def main():
 
     checkpoint = torch.load(args.weights_path, map_location="cpu", weights_only=False)
     orig_sd = checkpoint.get("network_weights", checkpoint)
+    # deepcopy keeps storage sharing between entries; pruned in place at every search step.
+    pruned_sd = copy.deepcopy(orig_sd)
 
     predictor = _build_predictor(weights_folder, checkpoint_name, device)
 
@@ -222,7 +219,7 @@ def main():
     while high - low > args.convergence_tolerance:
         mid = (low + high) / 2.0
         step += 1
-        pruned_sd, thr, sparsity = _prune(orig_sd, param_keys, mid, all_abs)
+        thr, sparsity = _prune(pruned_sd, orig_sd, param_keys, mid, all_abs)
         _load_state_dict(predictor, pruned_sd)
 
         pruned_scores = _dice_scores(
@@ -249,8 +246,8 @@ def main():
     _load_state_dict(predictor, orig_sd)
 
     # Final evaluation on the most aggressively pruned model that met the constraint
-    pruned_sd, best_thr, best_sparsity = _prune(
-        orig_sd, param_keys, best_percentile, all_abs
+    best_thr, best_sparsity = _prune(
+        pruned_sd, orig_sd, param_keys, best_percentile, all_abs
     )
     _load_state_dict(predictor, pruned_sd)
     pruned_scores = _dice_scores(

@@ -68,22 +68,21 @@ def _load_state_dict(predictor, state_dict):
         predictor.list_of_parameters[i] = state_dict
 
 
-def _prune(pruned_sd, orig_sd, param_keys, percentile, all_abs):
+def _prune(pruned_sd, orig_sd, param_keys, percentile, all_abs, total_params):
     """
     Reset pruned_sd's parameters to orig_sd, then zero weights whose absolute value
     falls below the given global percentile. Works in place so tensors aliased
     within the state dict keep sharing storage when it is saved.
     """
     threshold = float(np.percentile(all_abs, percentile))
-    total_float = n_zero = 0
+    n_zero = 0
     with torch.no_grad():
         for k, v in pruned_sd.items():
             if k in param_keys and v.is_floating_point():
                 v.copy_(orig_sd[k])
                 v.masked_fill_(v.abs() < threshold, 0)
-                total_float += v.numel()
                 n_zero += (v == 0).sum().item()
-    return threshold, n_zero / total_float
+    return threshold, n_zero / total_params
 
 
 def _dice_scores(predictor, image_files, ref_files, mask_threshold):
@@ -219,7 +218,9 @@ def main():
     while high - low > args.convergence_tolerance:
         mid = (low + high) / 2.0
         step += 1
-        thr, sparsity = _prune(pruned_sd, orig_sd, param_keys, mid, all_abs)
+        thr, sparsity = _prune(
+            pruned_sd, orig_sd, param_keys, mid, all_abs, total_params
+        )
         _load_state_dict(predictor, pruned_sd)
 
         pruned_scores = _dice_scores(
@@ -247,7 +248,7 @@ def main():
 
     # Final evaluation on the most aggressively pruned model that met the constraint
     best_thr, best_sparsity = _prune(
-        pruned_sd, orig_sd, param_keys, best_percentile, all_abs
+        pruned_sd, orig_sd, param_keys, best_percentile, all_abs, total_params
     )
     _load_state_dict(predictor, pruned_sd)
     pruned_scores = _dice_scores(

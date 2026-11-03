@@ -10,7 +10,7 @@ jobs:
   # The specific pre-commit tests configurations are found in
   # the .pre-commit-config.yaml file at the root of the repository
   pre-commit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v7
       with:
